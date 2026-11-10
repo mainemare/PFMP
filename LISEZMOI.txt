@@ -1,0 +1,43 @@
+SUIVI DES STAGES
+================
+
+DEMARRER
+  Double-cliquez sur "Demarrer.bat" (rien a installer : l'application utilise le PowerShell de Windows).
+  Une fenetre noire s'ouvre et affiche :
+    - l'adresse a ouvrir dans le navigateur (http://localhost:8080/)
+    - le CODE D'INSCRIPTION DES PROFESSEURS (a donner uniquement aux professeurs)
+  Laissez cette fenetre ouverte tant que l'application est utilisee.
+
+PREMIERE UTILISATION
+  1. Un professeur cree son compte (onglet "Inscription professeur" + code professeur).
+  2. Dans "Classes et dates", il cree les classes, leur couleur, le professeur referent et les periodes de stage.
+  3. Dans "Entreprises", il saisit ou importe la base d'entreprises
+     (le bouton "Charger des donnees de demonstration" permet d'essayer avec des entreprises fictives).
+  4. Les eleves creent ensuite leur compte (onglet "Inscription eleve") en choisissant leur classe.
+
+ACCES DEPUIS LES AUTRES POSTES DU RESEAU (eleves, autres professeurs)
+  Par defaut, l'application n'est accessible que sur l'ordinateur ou elle est lancee.
+  Pour l'ouvrir au reseau de l'etablissement, deux possibilites :
+    a) clic droit sur Demarrer.bat > "Executer en tant qu'administrateur" ;
+    b) ou, une seule fois, dans une invite de commandes administrateur :
+         netsh http add urlacl url=http://+:8080/ user="Tout le monde"     (ou user=Everyone sur un Windows en anglais)
+  Il faut aussi que le pare-feu Windows autorise le port 8080 en entree.
+  La fenetre du serveur affiche alors l'adresse a communiquer aux eleves (http://adresse-ip:8080/).
+  Voyez ces reglages avec le referent numerique / l'administrateur reseau de l'etablissement.
+
+DONNEES ET SAUVEGARDE
+  Tout est enregistre dans le dossier "donnees" (comptes, dossiers des eleves, classes, entreprises).
+  Pour sauvegarder : copiez ce dossier. Pour repartir de zero : supprimez-le (serveur arrete).
+  Les mots de passe sont stockes sous forme chiffree (hachage) ; un professeur peut reinitialiser
+  celui d'un eleve depuis son dossier.
+
+LOCALISATION DES ADRESSES
+  Le calcul des distances utilise le service public francais de geocodage (Base Adresse Nationale,
+  data.geopf.fr). Une connexion Internet est necessaire au moment ou l'on clique sur "Localiser" ;
+  seule l'adresse saisie est envoyee a ce service. Les distances sont calculees a vol d'oiseau.
+
+LIMITES A CONNAITRE
+  - Les alertes s'affichent dans l'application (a la connexion et sur la page d'accueil) :
+    il n'y a pas d'envoi d'e-mail ni de SMS.
+  - Les echanges ne sont pas chiffres (http) : a utiliser sur le reseau interne de l'etablissement,
+    pas directement sur Internet.

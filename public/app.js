@@ -1,0 +1,504 @@
+'use strict';
+/* ===== Suivi des stages — partie commune + espace élève ===== */
+
+const S = {
+  token: localStorage.getItem('stages_token') || '', user: null, vue: '', auth: 'connexion', pubClasses: [],
+  classes: [], entreprises: [], profs: [],
+  el: null, offset: 0,                                   // élève
+  eleves: [], dossier: null, onglet: 'synthese', qEnt: '', f: { classe: '', niveau: '', q: '', urg: false }, // prof
+};
+const A = {}, C = {}, I = {};   // actions (clic), changements, saisies
+
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const val = id => { const e = document.getElementById(id); return e ? e.value.trim() : ''; };
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+const today = () => { const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
+const maintenant = () => new Date().toISOString();
+const fmt = s => s ? s.slice(0, 10).split('-').reverse().join('/') : '…';
+const fmtDT = s => { const d = new Date(s); return d.toLocaleDateString('fr-FR') + ' à ' + d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }); };
+const jours = s => s ? Math.round((new Date(s + 'T00:00:00') - new Date(today() + 'T00:00:00')) / 864e5) : null;
+const nomComplet = u => `${u.prenom} ${u.nom}`.trim();
+
+const ERR = {
+  identifiants: 'Identifiant ou mot de passe incorrect.', identifiant_pris: 'Cet identifiant est déjà utilisé.',
+  identifiant_invalide: 'Identifiant : 3 à 40 caractères (lettres sans accent, chiffres, point, tiret).',
+  motdepasse_court: 'Le mot de passe doit contenir au moins 6 caractères.', code_prof: 'Code professeur incorrect.',
+  classe_requise: 'Choisis ta classe.', nom_requis: 'Nom et prénom sont obligatoires.', interdit: 'Action non autorisée.',
+  non_connecte: 'Session expirée, reconnecte-toi.', introuvable: 'Élément introuvable.',
+};
+const NIV = [
+  { l: 'Pas de recherche', c: '#dc2626' }, { l: 'Un peu de recherche', c: '#ea580c' }, { l: 'Recherche active', c: '#ca8a04' },
+  { l: 'Rendez-vous obtenu', c: '#2563eb' }, { l: 'Protocole signé', c: '#0d9488' }, { l: 'Convention signée', c: '#16a34a' },
+];
+const STATUTS = {
+  a_appeler: ['À appeler', '#64748b'], sans_reponse: ['Appelé – pas de réponse', '#b45309'], a_rappeler: ['À rappeler / relancer', '#b45309'],
+  attente: ['En attente de leur réponse', '#2563eb'], refus: ['Refus', '#b91c1c'], rdv: ['Rendez-vous obtenu', '#7c3aed'],
+  protocole: ['Accord – protocole signé', '#0d9488'], convention: ['Convention signée', '#15803d'],
+};
+const DEF = {
+  profil: () => ({ nom: '', prenom: '', classeId: '', tel: '', email: '', residences: [], nbSuggestions: 8 }),
+  cv: () => ({ titre: '', coordonnees: '', objectif: '', formation: '', experiences: '', competences: '', interets: '', aRelire: false, valide: false, correction: null }),
+  lettre: () => ({ objet: '', texte: '', aRelire: false, valide: false, correction: null }),
+  memento: () => ({ accroche: '', perso: '', pro: '', motsCles: '', aRelire: false, valide: false, correction: null }),
+  demandes: () => ({ liste: [] }),
+  journal: () => ({ evenements: [] }),
+  etat: () => ({ conseilsLus: [] }),
+  prof: () => ({ conseils: [], propositions: [], niveauForce: null, dates: null, urgence: null }),
+};
+const normaliser = docs => { const o = {}; for (const k in DEF) o[k] = Object.assign(DEF[k](), (docs && docs[k]) || {}); return o; };
+const CHAMPS = {
+  cv: [['titre', 'Titre du CV', 'ex. Élève de 3e à la recherche d’un stage d’observation', 1], ['coordonnees', 'Coordonnées', 'Adresse, téléphone, e-mail', 3],
+    ['objectif', 'Mon projet / ce que je recherche', '', 3], ['formation', 'Formation', 'Établissement, classe, options, diplômes…', 4],
+    ['experiences', 'Expériences (stages, bénévolat, petits boulots…)', '', 5], ['competences', 'Compétences et qualités', 'Langues, informatique, qualités personnelles…', 4],
+    ['interets', 'Centres d’intérêt', 'Sport, associations, loisirs…', 3]],
+  lettre: [['objet', 'Objet', 'ex. Demande de stage du … au …', 1], ['texte', 'Texte de la lettre', 'Madame, Monsieur,\n\n…', 16]],
+  memento: [['accroche', 'Ma phrase d’accroche au téléphone', 'Bonjour, je m’appelle … Je suis élève en … au … Je vous appelle car je recherche un stage du … au …', 3],
+    ['perso', 'Me présenter personnellement', 'Qui je suis, mes qualités, ce que j’aime faire…', 4],
+    ['pro', 'Me présenter professionnellement', 'Ma formation, mon projet, ce que je sais faire, pourquoi cette entreprise m’intéresse…', 4],
+    ['motsCles', 'Mes mots-clés à ne pas oublier', 'dates du stage · durée · convention · à qui envoyer mon CV · merci · au revoir', 3]],
+};
+const TITRES = { cv: 'CV', lettre: 'Lettre de motivation', memento: 'Memento d’appel' };
+
+/* ---------- Serveur ---------- */
+async function api(method, url, body) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (S.token) headers.Authorization = 'Bearer ' + S.token;
+  let r;
+  try { r = await fetch(url, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) }); }
+  catch { throw new Error('Serveur injoignable. Vérifie que l’application est bien démarrée.'); }
+  const t = await r.text(); let j = null;
+  try { j = t ? JSON.parse(t) : null; } catch { /* réponse non JSON */ }
+  if (!r.ok) {
+    if (r.status === 401 && S.user) { sessionFermee(); render(); }
+    throw new Error(ERR[j && j.erreur] || 'Erreur du serveur.');
+  }
+  return j;
+}
+const getDoc = k => api('GET', '/api/doc/' + k);
+const putDoc = (k, v) => api('PUT', '/api/doc/' + k, v);
+const sauver = section => putDoc(`eleve/${S.user.id}/${section}`, S.el[section]);
+function journal(texte) {
+  const j = S.el.journal; j.evenements.push({ date: maintenant(), texte });
+  j.evenements = j.evenements.slice(-150);
+  sauver('journal').catch(() => {});
+}
+function sessionFermee() { S.auth = 'connexion'; S.token = ''; S.user = null; S.vue = ''; S.el = null; S.eleves = []; S.dossier = null; localStorage.removeItem('stages_token'); modal(''); }
+
+/* ---------- Calculs ---------- */
+function dist(a, b) {
+  const R = 6371, rad = x => x * Math.PI / 180, dLat = rad(b.lat - a.lat), dLon = rad(b.lon - a.lon);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+function niveauAuto(d) {
+  const l = d.demandes.liste, a = s => l.some(x => x.statut === s);
+  if (a('convention')) return 5; if (a('protocole')) return 4; if (a('rdv')) return 3;
+  if (l.filter(x => x.statut !== 'a_appeler').length >= 3) return 2;
+  return l.length ? 1 : 0;
+}
+const niveau = d => d.prof.niveauForce != null ? d.prof.niveauForce : niveauAuto(d);
+function periodeCourante(cl) {
+  if (!cl || !cl.periodes) return null;
+  const p = cl.periodes.filter(x => x.debut).sort((a, b) => a.debut.localeCompare(b.debut));
+  return p.find(x => (x.fin || x.debut) >= today()) || p[p.length - 1] || null;
+}
+function datesEleve(d) {
+  const p = periodeCourante(S.classes.find(c => c.id === d.profil.classeId)), o = d.prof.dates;
+  if (o && o.debut) return { debut: o.debut, fin: o.fin || o.debut, derog: true, motif: o.motif || '', label: p ? p.label : '' };
+  return p ? { debut: p.debut, fin: p.fin || p.debut, derog: false, label: p.label } : null;
+}
+function enUrgence(d) {
+  const dt = datesEleve(d);
+  return !!dt && jours(dt.debut) <= 10 && dt.fin >= today() && niveau(d) < 5;
+}
+function barre(n, compact) {
+  const c = NIV[n].c;
+  return `<div class="barre${compact ? ' compact' : ''}" role="img" aria-label="Niveau ${n} sur 5 : ${NIV[n].l}"><div class="segs">${[1, 2, 3, 4, 5].map(i => `<i style="${i <= n ? `background:${c}` : ''}"></i>`).join('')}</div><span style="color:${c}"><b>${n}</b> · ${NIV[n].l}</span></div>`;
+}
+
+/* ---------- Localisation des adresses (Base Adresse Nationale) ---------- */
+async function geocoder(q) {
+  for (const u of ['https://data.geopf.fr/geocodage/search?limit=5&q=', 'https://api-adresse.data.gouv.fr/search/?limit=5&q=']) {
+    try {
+      const r = await fetch(u + encodeURIComponent(q)); if (!r.ok) continue;
+      const j = await r.json();
+      return (j.features || []).map(f => ({ label: f.properties.label, lat: f.geometry.coordinates[1], lon: f.geometry.coordinates[0] }));
+    } catch { /* essai suivant */ }
+  }
+  throw new Error('Service de localisation injoignable (connexion Internet nécessaire).');
+}
+async function assurerGeo(o) {
+  if (o.lat != null || !o.adresse) return;
+  try { const r = await geocoder(o.adresse); if (r.length) { o.lat = r[0].lat; o.lon = r[0].lon; } } catch { /* restera non localisée */ }
+}
+function champGeo(p, adresse, lat, lon) {
+  const ok = lat != null && lat !== '';
+  return `<div class="geo"><div class="ligne"><input id="${p}_adr" class="geo-adr" data-p="${p}" value="${esc(adresse)}" placeholder="Adresse ou commune" aria-label="Adresse ou commune">
+    <button type="button" class="btn sec" data-a="geo" data-p="${p}">📍&nbsp;Localiser</button></div>
+    <input type="hidden" id="${p}_lat" value="${ok ? lat : ''}"><input type="hidden" id="${p}_lon" value="${ok ? lon : ''}">
+    <div class="geo-etat" id="${p}_etat">${ok ? '✔ Adresse localisée' : 'Saisis l’adresse puis clique sur « Localiser ».'}</div></div>`;
+}
+const lireGeo = p => ({ adresse: val(p + '_adr'), lat: val(p + '_lat') === '' ? null : +val(p + '_lat'), lon: val(p + '_lon') === '' ? null : +val(p + '_lon') });
+A.geo = async el => {
+  const p = el.dataset.p, q = val(p + '_adr'), etat = $('#' + p + '_etat');
+  if (q.length < 3) { etat.textContent = 'Saisis au moins 3 caractères.'; return; }
+  etat.textContent = 'Recherche…';
+  try {
+    const res = await geocoder(q);
+    etat.innerHTML = res.length ? 'Choisis la bonne adresse :' + res.map(r => `<button type="button" class="lien" data-a="geoChoix" data-p="${p}" data-lat="${r.lat}" data-lon="${r.lon}" data-label="${esc(r.label)}">${esc(r.label)}</button>`).join('') : 'Aucune adresse trouvée.';
+  } catch (e) { etat.textContent = e.message; }
+};
+A.geoChoix = el => {
+  const p = el.dataset.p;
+  $('#' + p + '_adr').value = el.dataset.label; $('#' + p + '_lat').value = el.dataset.lat; $('#' + p + '_lon').value = el.dataset.lon;
+  $('#' + p + '_etat').textContent = '✔ Adresse localisée';
+};
+
+/* ---------- Interface générale ---------- */
+function toast(msg, err) {
+  const t = $('#toast'); t.innerHTML = `<div class="${err ? 'err' : ''}" role="status">${esc(msg)}</div>`;
+  clearTimeout(toast.t); toast.t = setTimeout(() => { t.innerHTML = ''; }, err ? 5000 : 2500);
+}
+function modal(html, large) {
+  $('#modal').innerHTML = html ? `<div class="overlay" data-a="fond"><div class="fenetre${large ? ' large' : ''}" role="dialog" aria-modal="true"><button class="fermer" data-a="fermerModal" aria-label="Fermer">✕</button>${html}</div></div>` : '';
+}
+A.fermerModal = () => modal('');
+A.fond = (el, ev) => { if (ev.target === el) { if (el.dataset.dossier) { S.dossier = null; render(); } else modal(''); } };
+A.aller = el => { S.vue = el.dataset.v; S.offset = 0; S.dossier = null; modal(''); render(); window.scrollTo(0, 0); };
+A.deconnexion = async () => { try { await api('POST', '/api/deconnexion'); } catch { /* déjà fermée */ } sessionFermee(); await chargerPublic(); render(); };
+
+function render() {
+  const app = $('#app');
+  if (!S.user) { app.innerHTML = vueAuth(); return; }
+  const prof = S.user.role === 'prof';
+  app.innerHTML = entete(prof) + `<main>${prof ? vueProf() : vueEleve()}</main>` + (prof && S.dossier ? vueDossier() : '');
+}
+function entete(prof) {
+  let nav;
+  if (prof) {
+    const nu = urgences().filter(e => !e.d.prof.urgence).length;
+    nav = [['tableau', '📊 Tableau de bord'], ['alertes', '🔔 Alertes', nu], ['classes', '📅 Classes et dates'], ['entreprises', '🏢 Entreprises']];
+  } else {
+    const d = S.el, nl = d.prof.conseils.filter(c => !d.etat.conseilsLus.includes(c.id)).length;
+    nav = [['accueil', '🏠 Accueil', nl], ['profil', '👤 Mon profil'], ['entreprises', '🏢 Entreprises'], ['suivi', '📞 Mes appels', relancesDues(d).length],
+      ['memento', '📝 Memento'], ['cv', '📄 CV'], ['lettre', '✉️ Lettre']];
+  }
+  return `<header class="top"><div class="logo">🎓 Suivi des stages${prof ? ' · Console professeur' : ''}</div>
+    <nav>${nav.map(([v, l, n]) => `<button data-a="aller" data-v="${v}" class="${S.vue === v ? 'actif' : ''}">${l}${n ? `<span class="pastille">${n}</span>` : ''}</button>`).join('')}</nav>
+    <div class="qui"><span>${esc(nomComplet(S.user))}</span><button data-a="deconnexion">Déconnexion</button></div></header>`;
+}
+
+/* ---------- Connexion / inscription ---------- */
+function vueAuth() {
+  const t = S.auth, tab = (k, l) => `<button data-a="auth" data-t="${k}" class="${t === k ? 'actif' : ''}">${l}</button>`;
+  let corps;
+  if (t === 'connexion') corps = `<label>Identifiant<input id="a_id" autocomplete="username"></label><label>Mot de passe<input id="a_pw" type="password" autocomplete="current-password"></label>
+    <button class="btn" data-a="connexion">Se connecter</button>`;
+  else corps = `<div class="deux"><label>Prénom<input id="a_prenom"></label><label>Nom<input id="a_nom"></label></div>
+    ${t === 'eleve' ? (S.pubClasses.length ? `<label>Classe<select id="a_classe"><option value="">— Choisir —</option>${S.pubClasses.map(c => `<option value="${c.id}">${esc(c.nom)}</option>`).join('')}</select></label>`
+      : `<div class="alerte attention">Aucune classe n’a encore été créée. Demande à ton professeur de créer ta classe avant de t’inscrire.</div>`)
+      : `<label>Code professeur <span class="doux petit">(affiché dans la fenêtre du serveur au démarrage)</span><input id="a_code" autocomplete="off"></label>`}
+    <label>Identifiant de connexion <span class="doux petit">(ex. prenom.nom)</span><input id="a_id" autocomplete="username"></label>
+    <label>Mot de passe <span class="doux petit">(6 caractères minimum)</span><input id="a_pw" type="password" autocomplete="new-password"></label>
+    <button class="btn" data-a="inscription">Créer mon compte</button>`;
+  return `<div class="auth"><h1 style="text-align:center">🎓 Suivi des stages</h1><p class="doux" style="text-align:center">Trouver son stage, étape par étape.</p>
+    <div class="carte"><div class="tabs">${tab('connexion', 'Connexion')}${tab('eleve', 'Inscription élève')}${tab('prof', 'Inscription professeur')}</div>${corps}</div></div>`;
+}
+A.auth = el => { S.auth = el.dataset.t; render(); };
+A.connexion = async () => ouvrirSession(await api('POST', '/api/connexion', { identifiant: val('a_id'), motdepasse: $('#a_pw').value }));
+A.inscription = async () => ouvrirSession(await api('POST', '/api/inscription', {
+  role: S.auth, prenom: val('a_prenom'), nom: val('a_nom'), identifiant: val('a_id'), motdepasse: $('#a_pw').value, classeId: val('a_classe'), codeProf: val('a_code'),
+}));
+async function ouvrirSession(r) {
+  S.token = r.token; localStorage.setItem('stages_token', r.token); S.user = r.user; S.vue = '';
+  await charger(); render(); rappelQuotidien();
+}
+async function chargerPublic() { try { S.pubClasses = ((await api('GET', '/api/public/classes')) || {}).classes || []; } catch { S.pubClasses = []; } }
+async function chargerCommun() {
+  const [cl, en, pr] = await Promise.all([getDoc('commun/classes'), getDoc('commun/entreprises'), api('GET', '/api/profs')]);
+  S.classes = (cl && cl.classes) || []; S.entreprises = (en && en.entreprises) || []; S.profs = pr || [];
+}
+async function charger() {
+  await chargerCommun();
+  if (S.user.role === 'prof') { await chargerEleves(); S.vue = S.vue || 'tableau'; return; }
+  const docs = {};
+  await Promise.all(Object.keys(DEF).map(async k => { docs[k] = await getDoc(`eleve/${S.user.id}/${k}`); }));
+  S.el = normaliser(docs);
+  S.vue = S.vue || (S.el.profil.residences.some(r => r.lat != null) ? 'accueil' : 'profil');
+}
+
+/* ====================== ESPACE ÉLÈVE ====================== */
+function vueEleve() {
+  switch (S.vue) {
+    case 'profil': return vueProfil();
+    case 'entreprises': return vueEntreprises();
+    case 'suivi': return vueSuivi();
+    case 'memento': case 'cv': case 'lettre': return vueDoc(S.vue);
+    default: return vueAccueil();
+  }
+}
+const relancesDues = d => d.demandes.liste.filter(x => x.dateRelance && x.dateRelance <= today() && !['refus', 'convention'].includes(x.statut));
+
+function alerteEleve(d) {
+  const dt = datesEleve(d), n = niveau(d);
+  if (!dt) return { c: 'info', h: '📅 Les dates de stage de ta classe ne sont pas encore fixées.' };
+  const j = jours(dt.debut), per = `du <b>${fmt(dt.debut)}</b> au <b>${fmt(dt.fin)}</b>`;
+  if (dt.fin < today()) return { c: 'info', h: `La période de stage (${per}) est terminée.` };
+  if (n === 5) return { c: 'ok', h: `🎉 Bravo, ta convention est signée ! Stage ${per}.` };
+  const quand = j > 0 ? `<b class="j">J-${j}</b> avant le début du stage (${per}).` : `<b class="j">Le stage a commencé</b> (${per}).`;
+  if (j <= 10) return { c: 'urgent', h: `🚨 ${quand}<br>Tu n’as pas encore de convention signée : le plan d’urgence est déclenché. Va voir ton professeur référent dès aujourd’hui.` };
+  if (j <= 30) return { c: 'alerte2', h: `⏰ ${quand}<br>Il reste moins d’un mois : appelle plusieurs entreprises cette semaine et relance celles qui n’ont pas répondu.` };
+  if (j <= 60) return { c: 'attention', h: `📣 ${quand}<br>C’est le moment d’intensifier ta recherche.` };
+  return { c: 'info', h: `📅 ${quand}<br>Commence ta recherche dès maintenant : les bonnes places partent vite.` };
+}
+function rappelQuotidien() {
+  if (!S.user) return;
+  const cle = 'stages_rappel_' + S.user.id;
+  if (localStorage.getItem(cle) === today()) return;
+  let html = '';
+  if (S.user.role === 'eleve') {
+    const al = alerteEleve(S.el);
+    if (['attention', 'alerte2', 'urgent'].includes(al.c)) html = `<h2>Rappel : ton stage approche</h2><div class="alerte ${al.c}">${al.h}</div>${barre(niveau(S.el))}`;
+  } else {
+    const u = urgences();
+    if (u.length) {
+      const miens = u.filter(e => (S.classes.find(c => c.id === e.d.profil.classeId) || {}).referentId === S.user.id);
+      html = `<h2>🚨 Plan d’urgence à déclencher</h2><p><b>${u.length} élève(s)</b> sont à 10 jours ou moins du début du stage sans convention signée${miens.length ? `, dont <b>${miens.length}</b> dans une classe dont vous êtes référent` : ''}.</p>
+        <button class="btn" data-a="aller" data-v="alertes">Voir les alertes</button>`;
+    }
+  }
+  if (html) { modal(html); localStorage.setItem(cle, today()); }
+}
+
+function vueAccueil() {
+  const d = S.el, n = niveau(d), al = alerteEleve(d);
+  const nonLus = d.prof.conseils.filter(c => !d.etat.conseilsLus.includes(c.id)), rel = relancesDues(d);
+  const todo = [[d.profil.residences.some(r => r.lat != null), 'Compléter mon profil et mes lieux de résidence', 'profil'], [!!d.memento.accroche.trim(), 'Préparer mon memento d’appel', 'memento'],
+    [!!d.cv.formation.trim(), 'Rédiger mon CV', 'cv'], [!!d.lettre.texte.trim(), 'Rédiger ma lettre de motivation', 'lettre'], [d.demandes.liste.length > 0, 'Sélectionner des entreprises à appeler', 'entreprises']];
+  return `<div class="alerte ${al.c}" role="alert">${al.h}</div>
+  <section class="carte"><h2>Où j’en suis</h2>${barre(n)}
+    <div class="etapes">${NIV.map((v, i) => `<div class="${i <= n ? 'fait' : ''}" style="${i <= n ? `background:${NIV[n].c}` : ''}"><b>${i}</b>${v.l}</div>`).join('')}</div>
+    <p class="doux petit" style="margin-top:10px">Le niveau avance tout seul : 1 dès qu’une entreprise est sélectionnée, 2 à partir de 3 entreprises contactées, puis selon le statut de tes demandes (rendez-vous, protocole, convention).</p></section>
+  <div class="grille">
+    <section class="carte"><h2>Mes prochaines actions</h2>
+      ${rel.length ? `<p>📞 <b>${rel.length} relance(s) à faire :</b> ${rel.map(x => esc(x.nom)).join(', ')} <button class="btn mini" data-a="aller" data-v="suivi">Voir</button></p>` : ''}
+      ${todo.map(([ok, l, v]) => `<p>${ok ? '✅' : '⬜'} ${ok ? `<span class="doux">${l}</span>` : `<button class="lien" style="display:inline" data-a="aller" data-v="${v}">${l}</button>`}</p>`).join('')}</section>
+    <section class="carte"><h2>Conseils de mes professeurs</h2>
+      ${d.prof.conseils.length ? [...d.prof.conseils].reverse().map(c => `<div class="conseil ${nonLus.includes(c) ? 'nonlu' : ''}"><div class="petit doux">${esc(c.profNom)} · ${fmtDT(c.date)}${nonLus.includes(c) ? ' · <b>nouveau</b>' : ''}</div>${esc(c.texte)}</div>`).join('') : '<p class="doux">Aucun conseil pour le moment.</p>'}
+      ${nonLus.length ? '<button class="btn mini" data-a="conseilsLus">J’ai lu</button>' : ''}</section>
+  </div>`;
+}
+A.conseilsLus = async () => { S.el.etat.conseilsLus = S.el.prof.conseils.map(c => c.id); await sauver('etat'); render(); };
+
+function vueProfil() {
+  const p = S.el.profil, res = [0, 1, 2].map(i => p.residences[i] || { label: '', adresse: '', lat: null, lon: null, rayon: 10 });
+  return `<section class="carte"><h2>Mon profil</h2><div class="deux">
+      <label>Prénom<input id="p_prenom" value="${esc(p.prenom)}"></label><label>Nom<input id="p_nom" value="${esc(p.nom)}"></label>
+      <label>Classe<select id="p_classe">${S.classes.map(c => `<option value="${c.id}" ${c.id === p.classeId ? 'selected' : ''}>${esc(c.nom)}</option>`).join('')}</select></label>
+      <label>Téléphone<input id="p_tel" value="${esc(p.tel)}"></label><label>E-mail<input id="p_email" type="email" value="${esc(p.email)}"></label></div></section>
+  <section class="carte"><h2>Mes lieux de résidence possibles</h2>
+    <p class="doux">Indique 2 ou 3 endroits d’où tu peux partir en stage (chez tes parents, un grand-parent, un internat…) et, pour chacun, la distance que tu peux parcourir.</p>
+    <div class="grille">${res.map((r, i) => `<div class="carte" style="margin:0"><h3>Lieu ${i + 1}${i === 2 ? ' <span class="doux">(facultatif)</span>' : ''}</h3>
+      <label>Nom du lieu<input id="r${i}_label" value="${esc(r.label)}" placeholder="ex. Chez mes parents"></label>
+      <div style="font-weight:600;font-size:.88rem">Adresse ou commune</div>${champGeo('r' + i, r.adresse, r.lat, r.lon)}
+      <label style="margin-top:12px">Distance de déplacement possible : <b id="r${i}_km">${r.rayon}</b> km
+        <input type="range" min="1" max="50" value="${r.rayon}" id="r${i}_rayon" data-i="rayon" data-k="r${i}_km"></label></div>`).join('')}</div>
+    <div class="actions"><button class="btn" data-a="sauverProfil">Enregistrer mon profil</button></div></section>`;
+}
+I.rayon = el => { $('#' + el.dataset.k).textContent = el.value; };
+A.sauverProfil = async () => {
+  const p = S.el.profil, res = [];
+  for (let i = 0; i < 3; i++) {
+    const g = lireGeo('r' + i); if (!g.adresse) continue;
+    if (g.lat == null) throw new Error(`Lieu ${i + 1} : clique sur « Localiser » et choisis l’adresse dans la liste.`);
+    res.push({ label: val(`r${i}_label`) || `Lieu ${i + 1}`, ...g, rayon: +val(`r${i}_rayon`) });
+  }
+  if (!val('p_nom') || !val('p_prenom')) throw new Error('Nom et prénom sont obligatoires.');
+  if (!res.length) throw new Error('Indique au moins un lieu de résidence (2 ou 3 de préférence).');
+  Object.assign(p, { prenom: val('p_prenom'), nom: val('p_nom'), classeId: val('p_classe') || p.classeId, tel: val('p_tel'), email: val('p_email'), residences: res });
+  await sauver('profil'); journal('Profil mis à jour'); toast('Profil enregistré'); render();
+};
+
+/* --- Entreprises proposées --- */
+function plusProche(d, e) {
+  let best = null;
+  for (const r of d.profil.residences) { if (r.lat == null || e.lat == null) continue; const km = dist(r, e); if (!best || km < best.km) best = { km, res: r.label, dans: km <= r.rayon }; }
+  return best;
+}
+function suggestions(d) {
+  const pris = new Set(d.demandes.liste.map(x => x.entrepriseId)), out = [];
+  for (const e of S.entreprises) {
+    if (pris.has(e.id) || e.lat == null) continue;
+    let best = null;
+    for (const r of d.profil.residences) { if (r.lat == null) continue; const km = dist(r, e); if (km <= r.rayon && (!best || km < best.km)) best = { km, res: r.label }; }
+    if (best) out.push({ e, ...best });
+  }
+  return out.sort((a, b) => a.km - b.km);
+}
+function ligneEnt(e, pos, p) {
+  return `<div class="ent ${p ? 'prof' : ''}"><input type="checkbox" class="sel" value="${e.id}" data-km="${pos ? pos.km.toFixed(1) : ''}" aria-label="Sélectionner ${esc(e.nom)}">
+    <div class="corps"><b>${esc(e.nom)}</b> ${e.secteur ? `<span class="badge clair">${esc(e.secteur)}</span>` : ''}
+      <div class="petit doux">${esc(e.adresse)}</div><div class="petit">☎ ${esc(e.tel || 'non renseigné')}${e.contact ? ` · Contact : ${esc(e.contact)}` : ''}${e.email ? ` · ${esc(e.email)}` : ''}</div>
+      ${p ? `<div class="petit">💡 Proposée par ${esc(p.profNom)}${p.message ? ` : « ${esc(p.message)} »` : ''}</div>` : ''}</div>
+    ${pos ? `<div class="km">${pos.km.toFixed(1)} km<div class="petit doux" style="font-weight:400">de « ${esc(pos.res)} »</div></div>` : ''}</div>`;
+}
+function vueEntreprises() {
+  const d = S.el, loc = d.profil.residences.filter(r => r.lat != null);
+  if (!loc.length) return `<section class="carte"><h2>Entreprises proches de chez moi</h2><p>Indique d’abord tes lieux de résidence pour recevoir des propositions.</p><button class="btn" data-a="aller" data-v="profil">Compléter mon profil</button></section>`;
+  const tout = suggestions(d), nb = d.profil.nbSuggestions || 8;
+  if (S.offset >= tout.length) S.offset = 0;
+  const page = tout.slice(S.offset, S.offset + nb), pris = new Set(d.demandes.liste.map(x => x.entrepriseId));
+  const props = d.prof.propositions.filter(p => !pris.has(p.entrepriseId)).map(p => ({ p, e: S.entreprises.find(e => e.id === p.entrepriseId) })).filter(x => x.e);
+  return `${props.length ? `<section class="carte"><h2>💡 Proposées par mes professeurs</h2>${props.map(x => ligneEnt(x.e, plusProche(d, x.e), x.p)).join('')}</section>` : ''}
+  <section class="carte"><h2>Entreprises proches de chez moi</h2>
+    <p class="doux">Autour de ${loc.map(r => `« ${esc(r.label)} » (${r.rayon} km)`).join(', ')} — ${tout.length} entreprise(s) disponible(s), distances à vol d’oiseau.
+      <button class="lien" style="display:inline" data-a="aller" data-v="profil">Modifier mes distances</button></p>
+    <label style="max-width:260px">Nombre de propositions affichées<select data-c="nbSugg">${[5, 6, 7, 8, 9, 10].map(n => `<option ${n === nb ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
+    ${page.length ? page.map(x => ligneEnt(x.e, x)).join('') : '<p>Aucune entreprise de la base ne se trouve dans tes zones. Augmente ta distance de déplacement ou demande conseil à ton professeur.</p>'}
+    <div class="actions">${page.length || props.length ? '<button class="btn" data-a="ajouterSelection">📞 Ajouter la sélection à mes appels</button>' : ''}
+      ${tout.length > nb ? '<button class="btn sec" data-a="autres">🔄 Voir d’autres propositions</button>' : ''}
+      <button class="btn sec" data-a="ajoutManuel">➕ J’ai trouvé une entreprise moi-même</button></div></section>`;
+}
+C.nbSugg = async el => { S.el.profil.nbSuggestions = +el.value; S.offset = 0; await sauver('profil'); render(); };
+A.autres = () => { S.offset += S.el.profil.nbSuggestions || 8; render(); };
+const nouvelleDemande = (e, km) => ({
+  id: uid(), entrepriseId: e.id || null, nom: e.nom, secteur: e.secteur || '', adresse: e.adresse || '', tel: e.tel || '', email: e.email || '', contact: e.contact || '',
+  km: km === '' || km == null ? null : +km, statut: 'a_appeler', interlocuteur: '', reponse: '', suite: '', dateRelance: '', appels: [], creeLe: maintenant(), majLe: maintenant(),
+});
+A.ajouterSelection = async () => {
+  const sel = $$('.sel:checked'); if (!sel.length) throw new Error('Coche au moins une entreprise.');
+  for (const c of sel) { const e = S.entreprises.find(x => x.id === c.value); if (e && !S.el.demandes.liste.some(x => x.entrepriseId === e.id)) S.el.demandes.liste.push(nouvelleDemande(e, c.dataset.km)); }
+  await sauver('demandes'); journal(`${sel.length} entreprise(s) ajoutée(s) à la liste d’appels`);
+  S.vue = 'suivi'; render(); toast('Entreprises ajoutées à tes appels');
+};
+A.ajoutManuel = () => modal(`<h2>Ajouter une entreprise trouvée par moi-même</h2><label>Nom de l’entreprise<input id="m_nom"></label><label>Adresse<input id="m_adresse"></label>
+  <div class="deux"><label>Téléphone<input id="m_tel"></label><label>Personne à contacter<input id="m_contact"></label></div><button class="btn" data-a="sauverManuel">Ajouter à mes appels</button>`);
+A.sauverManuel = async () => {
+  if (!val('m_nom')) throw new Error('Indique le nom de l’entreprise.');
+  S.el.demandes.liste.push(nouvelleDemande({ nom: val('m_nom'), adresse: val('m_adresse'), tel: val('m_tel'), contact: val('m_contact') }));
+  await sauver('demandes'); journal(`Entreprise ajoutée par l’élève : ${val('m_nom')}`); modal(''); S.vue = 'suivi'; render();
+};
+
+/* --- Suivi des appels --- */
+function carteDemande(x, lecture) {
+  const [l, c] = STATUTS[x.statut] || STATUTS.a_appeler, li = (t, v) => v ? `<dt>${t}</dt><dd>${esc(v)}</dd>` : '';
+  const retard = x.dateRelance && x.dateRelance <= today() && !['refus', 'convention'].includes(x.statut);
+  return `<div class="demande" style="--c:${c}"><div class="tete"><div><b>${esc(x.nom)}</b>${x.secteur ? ` <span class="badge clair">${esc(x.secteur)}</span>` : ''}${x.km != null ? ` <span class="petit doux">· ${(+x.km).toFixed(1)} km</span>` : ''}</div>
+      <span class="badge" style="background:${c}">${l}</span></div>
+    <dl>${li('Téléphone', x.tel)}${li('Adresse', x.adresse)}${li('Qui j’ai eu', x.interlocuteur)}${li('Réponse', x.reponse)}${li('Suite à donner', x.suite)}
+      ${x.dateRelance ? `<dt>Relance prévue</dt><dd>${fmt(x.dateRelance)}${retard ? ' <span class="badge" style="background:#dc2626">à faire</span>' : ''}</dd>` : ''}</dl>
+    ${x.appels.length ? `<details class="petit"><summary>Historique (${x.appels.length} appel(s))</summary>${x.appels.map(a => `<div>• ${fmtDT(a.date)} — ${(STATUTS[a.statut] || [''])[0]}${a.interlocuteur ? ` — ${esc(a.interlocuteur)}` : ''}${a.reponse ? ` : ${esc(a.reponse)}` : ''}</div>`).join('')}</details>` : ''}
+    ${lecture ? '' : `<div class="actions"><button class="btn mini" data-a="fiche" data-id="${x.id}">📞 Fiche d’appel</button><button class="btn mini danger" data-a="supDemande" data-id="${x.id}">Retirer</button></div>`}</div>`;
+}
+function vueSuivi() {
+  const l = S.el.demandes.liste;
+  return `<section class="carte"><h2>Ma console d’appels</h2>${barre(niveau(S.el))}
+    <p class="doux" style="margin-top:8px">Ouvre la « fiche d’appel » avant de téléphoner : ton memento s’affiche à côté, et tu notes qui tu as eu, la réponse et la suite à donner.</p>
+    <div class="actions"><button class="btn sec" data-a="aller" data-v="entreprises">🏢 Choisir d’autres entreprises</button><button class="btn sec" data-a="ajoutManuel">➕ Ajouter une entreprise</button></div></section>
+  ${l.length ? [...l].reverse().map(x => carteDemande(x)).join('') : '<section class="carte"><p>Tu n’as encore sélectionné aucune entreprise.</p></section>'}`;
+}
+function blocMemento(m) {
+  const vide = !CHAMPS.memento.some(([k]) => (m[k] || '').trim());
+  return `<div class="memo"><b>📝 Mon memento</b>${vide ? '<p class="doux">Ton memento est vide : prépare-le avant d’appeler.</p>' : CHAMPS.memento.map(([k, l]) => m[k] ? `<h4>${l}</h4><p>${esc(m[k])}</p>` : '').join('')}</div>`;
+}
+A.fiche = el => {
+  const x = S.el.demandes.liste.find(d => d.id === el.dataset.id); if (!x) return;
+  modal(`<h2>📞 ${esc(x.nom)}</h2><div class="grille"><div>${blocMemento(S.el.memento)}</div><div>
+    <p>${x.tel ? `<a class="tel" href="tel:${esc(x.tel.replace(/[^\d+]/g, ''))}">☎ ${esc(x.tel)}</a>` : '<span class="doux">Téléphone non renseigné</span>'}<br><span class="petit doux">${esc(x.adresse)}${x.contact ? ` · Demander : ${esc(x.contact)}` : ''}</span></p>
+    <label>Où en est cette demande ?<select id="d_statut">${Object.entries(STATUTS).map(([k, [l]]) => `<option value="${k}" ${k === x.statut ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+    <label>Qui ai-je eu au téléphone ?<input id="d_interlocuteur" value="${esc(x.interlocuteur)}" placeholder="Nom et fonction"></label>
+    <label>Quelle réponse ai-je eue ?<textarea id="d_reponse" rows="3">${esc(x.reponse)}</textarea></label>
+    <label>Quelle suite dois-je donner ?<textarea id="d_suite" rows="2" placeholder="Envoyer mon CV, rappeler jeudi, me présenter le…">${esc(x.suite)}</textarea></label>
+    <label>Date de relance ou de rendez-vous<input type="date" id="d_relance" value="${esc(x.dateRelance)}"></label>
+    <button class="btn" data-a="sauverFiche" data-id="${x.id}">Enregistrer</button></div></div>`, true);
+};
+A.sauverFiche = async el => {
+  const x = S.el.demandes.liste.find(d => d.id === el.dataset.id), avant = niveau(S.el);
+  Object.assign(x, { statut: val('d_statut'), interlocuteur: val('d_interlocuteur'), reponse: val('d_reponse'), suite: val('d_suite'), dateRelance: val('d_relance'), majLe: maintenant() });
+  if (x.statut !== 'a_appeler') x.appels.push({ date: maintenant(), statut: x.statut, interlocuteur: x.interlocuteur, reponse: x.reponse });
+  await sauver('demandes');
+  const apres = niveau(S.el);
+  journal(`${x.nom} : ${STATUTS[x.statut][0]}${x.interlocuteur ? ` (contact : ${x.interlocuteur})` : ''}${apres !== avant ? ` — niveau ${avant} → ${apres}` : ''}`);
+  modal(''); render(); toast(apres > avant ? `Bravo ! Tu passes au niveau ${apres} : ${NIV[apres].l}` : 'Fiche enregistrée');
+};
+A.supDemande = async el => {
+  const l = S.el.demandes.liste, x = l.find(d => d.id === el.dataset.id);
+  if (!x || !confirm(`Retirer « ${x.nom} » de tes appels ?`)) return;
+  l.splice(l.indexOf(x), 1); await sauver('demandes'); journal(`Entreprise retirée : ${x.nom}`); render();
+};
+
+/* --- CV, lettre, memento --- */
+function blocCorrection(doc) {
+  const c = doc.correction; if (!c && !doc.valide) return '';
+  return `<div class="correction ${doc.valide ? 'valide' : ''}"><b>${doc.valide ? '✅ Document validé' : '💬 Corrigé'}${c ? ` par ${esc(c.par)} le ${fmtDT(c.date)}` : ''}</b>${c && c.commentaire ? `\n${esc(c.commentaire)}` : ''}</div>`;
+}
+function formDoc(type, doc) {
+  return CHAMPS[type].map(([k, l, ph, rows]) => `<label>${l}${rows === 1 ? `<input id="f_${k}" value="${esc(doc[k])}" placeholder="${esc(ph)}">` : `<textarea id="f_${k}" rows="${rows}" placeholder="${esc(ph)}">${esc(doc[k])}</textarea>`}</label>`).join('');
+}
+function lireDoc(type, doc) { for (const [k] of CHAMPS[type]) doc[k] = $('#f_' + k).value; }
+function vueDoc(type) {
+  const doc = S.el[type], intro = {
+    cv: 'Rédige ton CV rubrique par rubrique. Ton professeur peut le relire et le corriger.',
+    lettre: 'Explique qui tu es, pourquoi tu cherches ce stage et pourquoi dans cette entreprise.',
+    memento: 'Ton aide-mémoire pour téléphoner : quelques mots ou un texte pour te présenter personnellement et professionnellement. Il s’affiche dans chaque fiche d’appel.',
+  }[type];
+  return `<section class="carte"><h2>${TITRES[type]}</h2><p class="doux">${intro}</p>${blocCorrection(doc)}${formDoc(type, doc)}
+    <div class="actions"><button class="btn" data-a="sauverDoc" data-t="${type}">Enregistrer</button>
+    ${type !== 'memento' ? `<button class="btn sec" data-a="imprimerDoc" data-t="${type}">🖨 Aperçu / Imprimer / PDF</button>` : ''}</div></section>`;
+}
+A.sauverDoc = async el => {
+  const t = el.dataset.t, doc = S.el[t]; lireDoc(t, doc);
+  doc.aRelire = true; doc.valide = false; doc.majLe = maintenant();
+  await sauver(t); journal(`${TITRES[t]} mis à jour`); toast('Enregistré — ton professeur pourra le relire'); render();
+};
+A.imprimerDoc = el => {
+  const t = el.dataset.t, d = S.el, doc = d[t]; lireDoc(t, doc);
+  const nom = esc(`${d.profil.prenom} ${d.profil.nom.toUpperCase()}`), sec = (h, v) => v && v.trim() ? `<h2>${h}</h2><p>${esc(v)}</p>` : '';
+  $('#print').innerHTML = t === 'cv'
+    ? `<h1>${nom}</h1><p><i>${esc(doc.titre)}</i></p><p>${esc(doc.coordonnees)}</p>${sec('Projet', doc.objectif)}${sec('Formation', doc.formation)}${sec('Expériences', doc.experiences)}${sec('Compétences', doc.competences)}${sec('Centres d’intérêt', doc.interets)}`
+    : `<p><b>${nom}</b>\n${esc(d.cv.coordonnees)}</p><p style="text-align:right">Le ${new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}</p><p><b>Objet : ${esc(doc.objet)}</b></p><p>${esc(doc.texte)}</p><p style="text-align:right">${nom}</p>`;
+  window.print();
+};
+
+/* ---------- Événements ---------- */
+function lancer(f, el, ev) { (async () => f(el, ev))().catch(e => toast(e.message || 'Erreur', true)); }
+document.addEventListener('click', ev => {
+  const el = ev.target.closest('[data-a]'); if (!el || !A[el.dataset.a]) return;
+  if (el.tagName === 'BUTTON' || el.tagName === 'A') ev.preventDefault();
+  lancer(A[el.dataset.a], el, ev);
+});
+document.addEventListener('change', ev => { const f = C[ev.target.dataset.c]; if (f) lancer(f, ev.target, ev); });
+document.addEventListener('input', ev => {
+  const t = ev.target, f = I[t.dataset.i]; if (f) lancer(f, t, ev);
+  if (t.classList.contains('geo-adr')) { const p = t.dataset.p; $('#' + p + '_lat').value = ''; $('#' + p + '_lon').value = ''; $('#' + p + '_etat').textContent = 'Adresse modifiée : clique sur « Localiser ».'; }
+});
+document.addEventListener('keydown', ev => {
+  if (ev.key === 'Escape' && $('#modal').innerHTML) modal('');
+  if (ev.key !== 'Enter') return;
+  if (ev.target.matches('.auth input')) { const b = $('.auth .btn'); if (b) b.click(); }
+  else if (ev.target.matches('.geo-adr')) { ev.preventDefault(); ev.target.parentElement.querySelector('button').click(); }
+  else if (ev.target.matches('.eleve')) ev.target.click();
+});
+
+// Rafraîchissement périodique (conseils reçus côté élève, activité des élèves côté professeur)
+setInterval(async () => {
+  if (!S.user || $('#modal').innerHTML || S.dossier || document.hidden) return;
+  try {
+    if (S.user.role === 'prof') { if (S.vue === 'tableau') { await chargerEleves(); majListe(); } }
+    else if (S.vue === 'accueil') {
+      await chargerCommun(); S.el.prof = Object.assign(DEF.prof(), await getDoc(`eleve/${S.user.id}/prof`) || {});
+      if (S.vue === 'accueil' && !$('#modal').innerHTML) render();
+    }
+  } catch { /* prochain essai */ }
+}, 60000);
+
+window.addEventListener('DOMContentLoaded', async () => {
+  if (S.token) {
+    try { S.user = await api('GET', '/api/moi'); await charger(); }
+    catch { S.user = null; S.token = ''; localStorage.removeItem('stages_token'); }
+  }
+  if (!S.user) await chargerPublic();
+  render(); rappelQuotidien();
+});
