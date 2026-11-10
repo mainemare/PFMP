@@ -1,0 +1,29 @@
+# Suivi des stages sur un NAS (OpenMediaVault, ou toute machine avec Docker).
+# Les valeurs ${...} viennent du fichier .env (voir .env.example).
+services:
+  stages:
+    image: node:22-alpine
+    restart: unless-stopped
+    working_dir: /app
+    command: node server.js
+    environment:
+      PORT: "8080"
+      DATA_DIR: /data
+      CODE_PROF: ${CODE_PROF}
+      CODE_ELEVE: ${CODE_ELEVE}
+    volumes:
+      - ${APP_DIR}:/app:ro            # le projet (lecture seule)
+      - ${APP_DIR}/donnees:/data      # comptes et dossiers des eleves (a sauvegarder)
+    ports:
+      - "8080:8080"                   # acces depuis le reseau local, pour les essais : http://adresse-du-nas:8080
+
+  # Tunnel Cloudflare : rend le site accessible en HTTPS depuis Internet sans ouvrir de port sur la box.
+  # Dans Cloudflare, le nom public doit pointer vers  http://stages:8080
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel run
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN}
+    depends_on:
+      - stages

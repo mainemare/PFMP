@@ -2,3 +2,4 @@
 donnees/
 .claude/
 node_modules/
+.env

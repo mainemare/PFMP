@@ -23,6 +23,18 @@ MISE EN SERVICE
   4. Ouvrez l'adresse fournie : un professeur cree son compte, puis les classes, puis la base d'entreprises.
   5. Communiquez aux eleves l'adresse du site et le code d'inscription eleve.
 
+SUR UN NAS OPENMEDIAVAULT (OU TOUTE MACHINE AVEC DOCKER)
+  Les fichiers docker-compose.yml et .env.example lancent l'application et un tunnel Cloudflare.
+  1. Dans OpenMediaVault : installer omv-extras, puis le plugin Compose (Docker).
+  2. Copier le dossier du projet dans un dossier partage du NAS.
+  3. Chez Cloudflare (Zero Trust > Networks > Tunnels) : creer un tunnel, copier son jeton,
+     et faire pointer un nom public (ex. stages.mondomaine.fr) vers  http://stages:8080
+  4. Dans le plugin Compose : creer un fichier avec le contenu de docker-compose.yml,
+     renseigner les variables de .env.example (APP_DIR, CODE_PROF, CODE_ELEVE, TUNNEL_TOKEN), puis "Up".
+  5. Programmer une sauvegarde reguliere du dossier "donnees" sur un autre disque.
+  Sans tunnel (essais sur le reseau local uniquement) : http://adresse-du-nas:8080
+  Attention : en http sur le reseau local, l'installation en application (PWA) n'est pas proposee.
+
 INSTALLER L'APPLICATION SUR UN TELEPHONE OU UN ORDINATEUR (PWA)
   Une fois le site en ligne en HTTPS, il peut s'installer comme une application :
   - Android (Chrome) et ordinateur (Chrome, Edge) : bouton "Installer l'application" sur la page de connexion,
