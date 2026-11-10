@@ -12,7 +12,7 @@ $ConfigFile = Join-Path $Data 'config.json'
 New-Item -ItemType Directory -Force $Docs | Out-Null
 $Utf8 = New-Object System.Text.UTF8Encoding($false)
 $Sections = @('profil', 'cv', 'lettre', 'memento', 'demandes', 'journal', 'etat', 'prof')
-$Mime = @{ '.html' = 'text/html; charset=utf-8'; '.js' = 'text/javascript; charset=utf-8'; '.css' = 'text/css; charset=utf-8'; '.svg' = 'image/svg+xml'; '.png' = 'image/png'; '.ico' = 'image/x-icon' }
+$Mime = @{ '.html' = 'text/html; charset=utf-8'; '.js' = 'text/javascript; charset=utf-8'; '.css' = 'text/css; charset=utf-8'; '.svg' = 'image/svg+xml'; '.png' = 'image/png'; '.ico' = 'image/x-icon'; '.webmanifest' = 'application/manifest+json; charset=utf-8' }
 
 function Read-Text($p) { [IO.File]::ReadAllText($p, $Utf8) }
 function Write-Text($p, $t) {

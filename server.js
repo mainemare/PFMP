@@ -11,7 +11,7 @@ const DOCS = path.join(DATA, 'docs');
 const USERS_FILE = path.join(DATA, 'comptes.json');
 const CONFIG_FILE = path.join(DATA, 'config.json');
 const SECTIONS = ['profil', 'cv', 'lettre', 'memento', 'demandes', 'journal', 'etat', 'prof'];
-const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon' };
+const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.webmanifest': 'application/manifest+json; charset=utf-8' };
 const SESSION_MS = 12 * 3600 * 1000;
 
 fs.mkdirSync(DOCS, { recursive: true });

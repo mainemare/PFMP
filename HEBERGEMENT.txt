@@ -23,6 +23,13 @@ MISE EN SERVICE
   4. Ouvrez l'adresse fournie : un professeur cree son compte, puis les classes, puis la base d'entreprises.
   5. Communiquez aux eleves l'adresse du site et le code d'inscription eleve.
 
+INSTALLER L'APPLICATION SUR UN TELEPHONE OU UN ORDINATEUR (PWA)
+  Une fois le site en ligne en HTTPS, il peut s'installer comme une application :
+  - Android (Chrome) et ordinateur (Chrome, Edge) : bouton "Installer l'application" sur la page de connexion,
+    ou menu du navigateur > "Installer l'application" / "Ajouter a l'ecran d'accueil".
+  - iPhone et iPad (Safari) : bouton Partager > "Sur l'ecran d'accueil".
+  L'icone ouvre l'application en plein ecran. Une connexion Internet reste necessaire.
+
 PROTECTIONS EN PLACE
   - Inscription impossible sans code (un code pour les professeurs, un autre pour les eleves).
   - Mots de passe stockes haches ; tentatives de connexion limitees (8 echecs par quart d'heure).

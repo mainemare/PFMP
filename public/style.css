@@ -123,6 +123,26 @@ th { font-size: .8rem; text-transform: uppercase; letter-spacing: .03em; color: 
 #toast div { background: #1c2333; color: #fff; padding: 10px 18px; border-radius: 10px; box-shadow: 0 6px 20px rgba(0,0,0,.3); }
 #toast div.err { background: #b91c1c; }
 
+/* Téléphone et application installée */
+.installer { margin-top: 12px; }
+body { -webkit-tap-highlight-color: transparent; overscroll-behavior-y: none; }
+header.top { padding-top: max(12px, env(safe-area-inset-top)); position: sticky; top: 0; z-index: 20; }
+@media (max-width: 640px) {
+  header.top { padding: max(8px, env(safe-area-inset-top)) 10px 8px; gap: 6px 10px; }
+  header.top .logo { font-size: 1rem; flex: 1; }
+  header.top nav { order: 3; flex: 1 0 100%; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin: 0 -10px; padding: 0 10px; }
+  header.top nav::-webkit-scrollbar { display: none; }
+  header.top nav button { white-space: nowrap; padding: 8px 12px; }
+  header.top .qui span { display: none; }
+  main { padding: 12px 10px calc(50px + env(safe-area-inset-bottom)); }
+  .carte { padding: 14px; }
+  .btn { padding: 11px 16px; }
+  input, select, textarea { font-size: 16px; padding: 10px; }
+  .overlay { padding: 0; } .fenetre, .fenetre.large { border-radius: 0; min-height: 100vh; padding: 16px 14px; }
+  .ent { flex-wrap: wrap; } .ent .km { flex: 1 0 100%; padding-left: 30px; }
+  .auth { margin: 3vh auto; padding: 0 10px; }
+}
+
 /* Impression (CV, lettre) */
 #print { display: none; }
 @media print {

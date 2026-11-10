@@ -68,7 +68,7 @@ async function api(method, url, body) {
   if (S.token) headers.Authorization = 'Bearer ' + S.token;
   let r;
   try { r = await fetch(url, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) }); }
-  catch { throw new Error('Serveur injoignable. Vérifie que l’application est bien démarrée.'); }
+  catch { throw Object.assign(new Error('Serveur injoignable. Vérifie ta connexion Internet.'), { reseau: true }); }
   const t = await r.text(); let j = null;
   try { j = t ? JSON.parse(t) : null; } catch { /* réponse non JSON */ }
   if (!r.ok) {
@@ -208,7 +208,7 @@ function vueAuth() {
     <label>Mot de passe <span class="doux petit">(6 caractères minimum)</span><input id="a_pw" type="password" autocomplete="new-password"></label>
     <button class="btn" data-a="inscription">Créer mon compte</button>`;
   return `<div class="auth"><h1 style="text-align:center">🎓 Suivi des stages</h1><p class="doux" style="text-align:center">Trouver son stage, étape par étape.</p>
-    <div class="carte"><div class="tabs">${tab('connexion', 'Connexion')}${tab('eleve', 'Inscription élève')}${tab('prof', 'Inscription professeur')}</div>${corps}</div></div>`;
+    <div class="carte"><div class="tabs">${tab('connexion', 'Connexion')}${tab('eleve', 'Inscription élève')}${tab('prof', 'Inscription professeur')}</div>${corps}</div><div class="zone-installer" style="text-align:center">${blocInstaller()}</div></div>`;
 }
 A.auth = el => { S.auth = el.dataset.t; render(); };
 A.connexion = async () => ouvrirSession(await api('POST', '/api/connexion', { identifiant: val('a_id'), motdepasse: $('#a_pw').value }));
@@ -506,8 +506,31 @@ setInterval(async () => {
 window.addEventListener('DOMContentLoaded', async () => {
   if (S.token) {
     try { S.user = await api('GET', '/api/moi'); await charger(); }
-    catch { S.user = null; S.token = ''; localStorage.removeItem('stages_token'); }
+    catch (e) {
+      S.user = null;
+      if (e.reseau) horsLigne = true;   // coupure réseau : on garde la session pour la prochaine ouverture
+      else { S.token = ''; localStorage.removeItem('stages_token'); }
+    }
   }
+  if (horsLigne) { $('#app').innerHTML = `<div class="auth"><div class="carte" style="text-align:center"><h1>🎓 Suivi des stages</h1><p>📡 Pas de connexion au serveur.</p><p class="doux">Vérifie ta connexion Internet puis réessaie.</p><button class="btn" data-a="recharger">Réessayer</button></div></div>`; return; }
   if (!S.user) await chargerPublic();
   render(); rappelQuotidien();
 });
+let horsLigne = false;
+A.recharger = () => location.reload();
+
+/* ---------- Application installable (PWA) ---------- */
+let invite = null;   // proposition d'installation du navigateur (Chrome, Edge, Android)
+const installee = () => window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+const surIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent);
+function blocInstaller() {
+  if (installee()) return '';
+  if (invite) return `<div class="installer"><button class="btn sec" data-a="installer">📲 Installer l’application</button></div>`;
+  if (surIOS()) return `<div class="installer petit doux">📲 Pour installer l’application : bouton <b>Partager</b> de Safari, puis « Sur l’écran d’accueil ».</div>`;
+  return '';
+}
+function majInstaller() { for (const z of $$('.zone-installer')) z.innerHTML = blocInstaller(); }
+window.addEventListener('beforeinstallprompt', ev => { ev.preventDefault(); invite = ev; majInstaller(); });
+window.addEventListener('appinstalled', () => { invite = null; majInstaller(); toast('Application installée'); });
+A.installer = async () => { if (!invite) return; invite.prompt(); await invite.userChoice; invite = null; majInstaller(); };
+if ('serviceWorker' in navigator && window.isSecureContext) window.addEventListener('load', () => { navigator.serviceWorker.register('/sw.js').catch(() => {}); });
