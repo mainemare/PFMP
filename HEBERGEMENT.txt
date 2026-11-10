@@ -1,0 +1,45 @@
+HEBERGER "SUIVI DES STAGES" EN LIGNE
+====================================
+
+Le fichier server.js est la version hebergeable du serveur (Node.js 18 ou plus, aucune dependance).
+Il sert les memes pages et lit les memes donnees que la version Windows (serveur.ps1).
+
+CE QU'IL FAUT CHEZ L'HEBERGEUR
+  1. Node.js 18 ou plus. Commande de demarrage : npm start   (ou : node server.js)
+  2. Un DISQUE PERSISTANT. Les comptes et les dossiers des eleves sont des fichiers :
+     sans disque persistant, tout est efface a chaque redemarrage ou mise a jour.
+  3. Le HTTPS (fourni d'office par la plupart des hebergeurs). Le serveur redirige http vers https.
+
+VARIABLES D'ENVIRONNEMENT
+  PORT        port d'ecoute (en general fourni automatiquement par l'hebergeur)
+  DATA_DIR    chemin du disque persistant, par exemple /data   (par defaut : dossier "donnees" a cote du serveur)
+  CODE_PROF   code d'inscription des professeurs (sinon genere et affiche dans les journaux au demarrage)
+  CODE_ELEVE  code d'inscription des eleves (sinon genere ; visible par les professeurs dans "Classes et dates")
+
+MISE EN SERVICE
+  1. Reliez l'hebergeur au depot GitHub (deploiement automatique a chaque mise a jour).
+  2. Ajoutez le disque persistant et la variable DATA_DIR qui pointe dessus.
+  3. Definissez CODE_PROF et CODE_ELEVE (des codes longs, difficiles a deviner).
+  4. Ouvrez l'adresse fournie : un professeur cree son compte, puis les classes, puis la base d'entreprises.
+  5. Communiquez aux eleves l'adresse du site et le code d'inscription eleve.
+
+PROTECTIONS EN PLACE
+  - Inscription impossible sans code (un code pour les professeurs, un autre pour les eleves).
+  - Mots de passe stockes haches ; tentatives de connexion limitees (8 echecs par quart d'heure).
+  - Sessions de 12 heures ; la reinitialisation d'un mot de passe ferme les sessions de l'eleve.
+  - Un eleve ne peut lire et modifier que son propre dossier ; seuls les professeurs voient les dossiers.
+  - Residence des eleves : seule la COMMUNE est enregistree (jamais d'adresse) ; les distances partent du centre de la commune.
+
+DONNEES PERSONNELLES (RGPD) - A VALIDER AVANT L'OUVERTURE
+  L'application contient des donnees d'eleves, souvent mineurs : nom, prenom, classe, commune,
+  telephone et e-mail s'ils les saisissent, CV, lettre de motivation, suivi des appels.
+  - Faites valider la mise en ligne par le chef d'etablissement et le delegue a la protection des donnees.
+  - Choisissez un hebergement situe dans l'Union europeenne.
+  - Informez les eleves et les familles ; supprimez les comptes en fin d'annee (bouton dans le dossier de l'eleve).
+  - Sauvegardez regulierement le dossier DATA_DIR.
+
+LIMITES
+  - Un seul serveur a la fois (pas de fonctionnement en plusieurs instances).
+  - Les alertes s'affichent dans l'application : pas d'e-mail ni de SMS.
+  - Pas de "mot de passe oublie" automatique : un professeur reinitialise le mot de passe d'un eleve ;
+    pour un professeur, il faut intervenir dans le fichier comptes.json.

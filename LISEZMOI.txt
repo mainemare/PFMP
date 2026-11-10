@@ -34,7 +34,11 @@ DONNEES ET SAUVEGARDE
 LOCALISATION DES ADRESSES
   Le calcul des distances utilise le service public francais de geocodage (Base Adresse Nationale,
   data.geopf.fr). Une connexion Internet est necessaire au moment ou l'on clique sur "Localiser" ;
-  seule l'adresse saisie est envoyee a ce service. Les distances sont calculees a vol d'oiseau.
+  seul le texte saisi est envoye a ce service. Les distances sont calculees a vol d'oiseau.
+  Pour les eleves, seule la COMMUNE de residence est demandee et enregistree (jamais d'adresse).
+
+MISE EN LIGNE SUR INTERNET
+  Voir HEBERGEMENT.txt (version Node.js : server.js).
 
 LIMITES A CONNAITRE
   - Les alertes s'affichent dans l'application (a la connexion et sur la page d'accueil) :

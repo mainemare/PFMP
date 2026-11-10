@@ -11,6 +11,7 @@ const eleveOuvert = () => S.eleves.find(e => e.id === S.dossier);
 async function chargerEleves() {
   S.eleves = (await api('GET', '/api/eleves')).map(e => ({ id: e.id, identifiant: e.identifiant, d: normaliser(e.docs) }))
     .sort((a, b) => (a.d.profil.nom + a.d.profil.prenom).localeCompare(b.d.profil.nom + b.d.profil.prenom, 'fr'));
+  if (S.codeEleve === undefined) { try { S.codeEleve = (await fetch('/api/admin/codes', { headers: { Authorization: 'Bearer ' + S.token } }).then(r => r.ok ? r.json() : {})).codeEleve || ''; } catch { S.codeEleve = ''; } }
 }
 // Relit la version à jour sur le serveur avant de la modifier (plusieurs professeurs peuvent travailler en même temps).
 async function mutProf(id, fn) {
@@ -95,7 +96,7 @@ function dosSynthese(e) {
   const d = e.d, p = d.profil, o = d.prof.dates || {}, u = d.prof.urgence;
   return `<div class="grille"><div>
     <h3>Profil</h3><p>Identifiant : <b>${esc(e.identifiant)}</b><br>Téléphone : ${esc(p.tel || '—')}<br>E-mail : ${esc(p.email || '—')}</p>
-    <h3>Lieux de résidence</h3>${p.residences.length ? p.residences.map(r => `<p>📍 <b>${esc(r.label)}</b> — ${esc(r.adresse)} · rayon ${r.rayon} km</p>`).join('') : '<p class="doux">Non renseignés.</p>'}
+    <h3>Communes de résidence</h3>${p.residences.length ? p.residences.map(r => `<p>📍 <b>${esc(r.label)}</b> — ${esc(r.adresse)} · rayon ${r.rayon} km</p>`).join('') : '<p class="doux">Non renseignés.</p>'}
     <h3>Dossier</h3><p>${['cv', 'lettre', 'memento'].map(t => `${TITRES[t]} : ${d[t].valide ? '✅ validé' : d[t].aRelire ? '🟣 à relire' : d[t].majLe ? 'corrigé' : '⬜ non commencé'}`).join('<br>')}</p>
     ${enUrgence(d) ? `<div class="alerte urgent"><b>🚨 Plan d’urgence</b><br>${u ? `Pris en main par ${esc(u.par)} le ${fmtDT(u.date)}${u.note ? `<br>« ${esc(u.note)} »` : ''}` : 'Personne n’a encore pris ce dossier en main.'}
       <label style="margin-top:8px">Note<input id="u_note" value="${esc(u ? u.note : '')}" placeholder="Actions engagées…"></label><button class="btn mini" data-a="prendreEnMain">${u ? 'Mettre à jour' : 'Je prends ce dossier en main'}</button></div>` : ''}
@@ -196,6 +197,7 @@ function vueAlertes() {
 /* ---------- Classes et dates ---------- */
 function vueClasses() {
   return `<section class="carte"><h2>Classes et dates de stage</h2><p class="doux">Chaque classe a une couleur, un professeur référent et une ou plusieurs périodes de stage. Les alertes des élèves et le plan d’urgence (J-10) se calculent sur la prochaine période.</p>
+    ${S.codeEleve ? `<div class="alerte info">🔑 Code d’inscription à communiquer aux élèves : <b>${esc(S.codeEleve)}</b></div>` : ''}
     <button class="btn" data-a="nouvelleClasse">➕ Nouvelle classe</button></section>${S.classes.map(carteClasse).join('')}`;
 }
 function carteClasse(cl) {

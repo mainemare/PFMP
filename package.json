@@ -1,0 +1,9 @@
+{
+  "name": "suivi-stages",
+  "version": "1.0.0",
+  "description": "Suivi des recherches de stage : espace eleve et console professeur",
+  "private": true,
+  "main": "server.js",
+  "scripts": { "start": "node server.js" },
+  "engines": { "node": ">=18" }
+}

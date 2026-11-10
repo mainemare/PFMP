@@ -26,6 +26,7 @@ const ERR = {
   identifiant_invalide: 'Identifiant : 3 à 40 caractères (lettres sans accent, chiffres, point, tiret).',
   motdepasse_court: 'Le mot de passe doit contenir au moins 6 caractères.', code_prof: 'Code professeur incorrect.',
   classe_requise: 'Choisis ta classe.', nom_requis: 'Nom et prénom sont obligatoires.', interdit: 'Action non autorisée.',
+  code_eleve: 'Code d’inscription élève incorrect : demande-le à ton professeur.', trop_essais: 'Trop de tentatives. Réessaie dans quelques minutes.',
   non_connecte: 'Session expirée, reconnecte-toi.', introuvable: 'Élément introuvable.',
 };
 const NIV = [
@@ -119,12 +120,14 @@ function barre(n, compact) {
 }
 
 /* ---------- Localisation des adresses (Base Adresse Nationale) ---------- */
-async function geocoder(q) {
-  for (const u of ['https://data.geopf.fr/geocodage/search?limit=5&q=', 'https://api-adresse.data.gouv.fr/search/?limit=5&q=']) {
+// commune = true : ne cherche que des communes (pour les élèves, on n'enregistre jamais d'adresse précise).
+async function geocoder(q, commune) {
+  for (const u of ['https://data.geopf.fr/geocodage/search?limit=5', 'https://api-adresse.data.gouv.fr/search/?limit=5']) {
     try {
-      const r = await fetch(u + encodeURIComponent(q)); if (!r.ok) continue;
+      const r = await fetch(u + (commune ? '&type=municipality' : '') + '&q=' + encodeURIComponent(q)); if (!r.ok) continue;
       const j = await r.json();
-      return (j.features || []).map(f => ({ label: f.properties.label, lat: f.geometry.coordinates[1], lon: f.geometry.coordinates[0] }));
+      return (j.features || []).filter(f => !commune || f.properties.type === 'municipality')
+        .map(f => ({ label: commune ? `${f.properties.city || f.properties.label} (${f.properties.postcode || ''})` : f.properties.label, lat: f.geometry.coordinates[1], lon: f.geometry.coordinates[0] }));
     } catch { /* essai suivant */ }
   }
   throw new Error('Service de localisation injoignable (connexion Internet nécessaire).');
@@ -133,12 +136,12 @@ async function assurerGeo(o) {
   if (o.lat != null || !o.adresse) return;
   try { const r = await geocoder(o.adresse); if (r.length) { o.lat = r[0].lat; o.lon = r[0].lon; } } catch { /* restera non localisée */ }
 }
-function champGeo(p, adresse, lat, lon) {
-  const ok = lat != null && lat !== '';
-  return `<div class="geo"><div class="ligne"><input id="${p}_adr" class="geo-adr" data-p="${p}" value="${esc(adresse)}" placeholder="Adresse ou commune" aria-label="Adresse ou commune">
-    <button type="button" class="btn sec" data-a="geo" data-p="${p}">📍&nbsp;Localiser</button></div>
+function champGeo(p, adresse, lat, lon, commune) {
+  const ok = lat != null && lat !== '', quoi = commune ? 'Commune' : 'Adresse ou commune';
+  return `<div class="geo"><div class="ligne"><input id="${p}_adr" class="geo-adr" data-p="${p}" value="${esc(adresse)}" placeholder="${commune ? 'Nom de la commune (pas d’adresse)' : quoi}" aria-label="${quoi}">
+    <button type="button" class="btn sec" data-a="geo" data-p="${p}" ${commune ? 'data-commune="1"' : ''}>📍&nbsp;Localiser</button></div>
     <input type="hidden" id="${p}_lat" value="${ok ? lat : ''}"><input type="hidden" id="${p}_lon" value="${ok ? lon : ''}">
-    <div class="geo-etat" id="${p}_etat">${ok ? '✔ Adresse localisée' : 'Saisis l’adresse puis clique sur « Localiser ».'}</div></div>`;
+    <div class="geo-etat" id="${p}_etat">${ok ? '✔ Localisée' : `Saisis ${commune ? 'le nom de la commune' : 'l’adresse'} puis clique sur « Localiser ».`}</div></div>`;
 }
 const lireGeo = p => ({ adresse: val(p + '_adr'), lat: val(p + '_lat') === '' ? null : +val(p + '_lat'), lon: val(p + '_lon') === '' ? null : +val(p + '_lon') });
 A.geo = async el => {
@@ -146,14 +149,14 @@ A.geo = async el => {
   if (q.length < 3) { etat.textContent = 'Saisis au moins 3 caractères.'; return; }
   etat.textContent = 'Recherche…';
   try {
-    const res = await geocoder(q);
-    etat.innerHTML = res.length ? 'Choisis la bonne adresse :' + res.map(r => `<button type="button" class="lien" data-a="geoChoix" data-p="${p}" data-lat="${r.lat}" data-lon="${r.lon}" data-label="${esc(r.label)}">${esc(r.label)}</button>`).join('') : 'Aucune adresse trouvée.';
+    const res = await geocoder(q, !!el.dataset.commune);
+    etat.innerHTML = res.length ? 'Choisis dans la liste :' + res.map(r => `<button type="button" class="lien" data-a="geoChoix" data-p="${p}" data-lat="${r.lat}" data-lon="${r.lon}" data-label="${esc(r.label)}">${esc(r.label)}</button>`).join('') : (el.dataset.commune ? 'Aucune commune trouvée : saisis seulement le nom de la commune.' : 'Aucune adresse trouvée.');
   } catch (e) { etat.textContent = e.message; }
 };
 A.geoChoix = el => {
   const p = el.dataset.p;
   $('#' + p + '_adr').value = el.dataset.label; $('#' + p + '_lat').value = el.dataset.lat; $('#' + p + '_lon').value = el.dataset.lon;
-  $('#' + p + '_etat').textContent = '✔ Adresse localisée';
+  $('#' + p + '_etat').textContent = '✔ Localisée';
 };
 
 /* ---------- Interface générale ---------- */
@@ -197,9 +200,10 @@ function vueAuth() {
   if (t === 'connexion') corps = `<label>Identifiant<input id="a_id" autocomplete="username"></label><label>Mot de passe<input id="a_pw" type="password" autocomplete="current-password"></label>
     <button class="btn" data-a="connexion">Se connecter</button>`;
   else corps = `<div class="deux"><label>Prénom<input id="a_prenom"></label><label>Nom<input id="a_nom"></label></div>
+    ${t === 'eleve' && S.codeEleveRequis ? `<label>Code d’inscription élève <span class="doux petit">(donné par ton professeur)</span><input id="a_codeEleve" autocomplete="off"></label>` : ''}
     ${t === 'eleve' ? (S.pubClasses.length ? `<label>Classe<select id="a_classe"><option value="">— Choisir —</option>${S.pubClasses.map(c => `<option value="${c.id}">${esc(c.nom)}</option>`).join('')}</select></label>`
       : `<div class="alerte attention">Aucune classe n’a encore été créée. Demande à ton professeur de créer ta classe avant de t’inscrire.</div>`)
-      : `<label>Code professeur <span class="doux petit">(affiché dans la fenêtre du serveur au démarrage)</span><input id="a_code" autocomplete="off"></label>`}
+      : `<label>Code professeur <span class="doux petit">(affiché au démarrage du serveur)</span><input id="a_code" autocomplete="off"></label>`}
     <label>Identifiant de connexion <span class="doux petit">(ex. prenom.nom)</span><input id="a_id" autocomplete="username"></label>
     <label>Mot de passe <span class="doux petit">(6 caractères minimum)</span><input id="a_pw" type="password" autocomplete="new-password"></label>
     <button class="btn" data-a="inscription">Créer mon compte</button>`;
@@ -209,13 +213,17 @@ function vueAuth() {
 A.auth = el => { S.auth = el.dataset.t; render(); };
 A.connexion = async () => ouvrirSession(await api('POST', '/api/connexion', { identifiant: val('a_id'), motdepasse: $('#a_pw').value }));
 A.inscription = async () => ouvrirSession(await api('POST', '/api/inscription', {
-  role: S.auth, prenom: val('a_prenom'), nom: val('a_nom'), identifiant: val('a_id'), motdepasse: $('#a_pw').value, classeId: val('a_classe'), codeProf: val('a_code'),
+  role: S.auth, prenom: val('a_prenom'), nom: val('a_nom'), identifiant: val('a_id'), motdepasse: $('#a_pw').value, classeId: val('a_classe'), codeProf: val('a_code'), codeEleve: val('a_codeEleve'),
 }));
 async function ouvrirSession(r) {
   S.token = r.token; localStorage.setItem('stages_token', r.token); S.user = r.user; S.vue = '';
   await charger(); render(); rappelQuotidien();
 }
-async function chargerPublic() { try { S.pubClasses = ((await api('GET', '/api/public/classes')) || {}).classes || []; } catch { S.pubClasses = []; } }
+async function chargerPublic() {
+  // Le code élève n'existe que sur la version hébergée (server.js) ; la version Windows répond 404.
+  try { S.codeEleveRequis = !!(await fetch('/api/public/info').then(r => r.ok ? r.json() : {})).codeEleveRequis; } catch { S.codeEleveRequis = false; }
+  try { S.pubClasses = ((await api('GET', '/api/public/classes')) || {}).classes || []; } catch { S.pubClasses = []; }
+}
 async function chargerCommun() {
   const [cl, en, pr] = await Promise.all([getDoc('commun/classes'), getDoc('commun/entreprises'), api('GET', '/api/profs')]);
   S.classes = (cl && cl.classes) || []; S.entreprises = (en && en.entreprises) || []; S.profs = pr || [];
@@ -275,7 +283,7 @@ function rappelQuotidien() {
 function vueAccueil() {
   const d = S.el, n = niveau(d), al = alerteEleve(d);
   const nonLus = d.prof.conseils.filter(c => !d.etat.conseilsLus.includes(c.id)), rel = relancesDues(d);
-  const todo = [[d.profil.residences.some(r => r.lat != null), 'Compléter mon profil et mes lieux de résidence', 'profil'], [!!d.memento.accroche.trim(), 'Préparer mon memento d’appel', 'memento'],
+  const todo = [[d.profil.residences.some(r => r.lat != null), 'Compléter mon profil et mes communes de résidence', 'profil'], [!!d.memento.accroche.trim(), 'Préparer mon memento d’appel', 'memento'],
     [!!d.cv.formation.trim(), 'Rédiger mon CV', 'cv'], [!!d.lettre.texte.trim(), 'Rédiger ma lettre de motivation', 'lettre'], [d.demandes.liste.length > 0, 'Sélectionner des entreprises à appeler', 'entreprises']];
   return `<div class="alerte ${al.c}" role="alert">${al.h}</div>
   <section class="carte"><h2>Où j’en suis</h2>${barre(n)}
@@ -298,11 +306,12 @@ function vueProfil() {
       <label>Prénom<input id="p_prenom" value="${esc(p.prenom)}"></label><label>Nom<input id="p_nom" value="${esc(p.nom)}"></label>
       <label>Classe<select id="p_classe">${S.classes.map(c => `<option value="${c.id}" ${c.id === p.classeId ? 'selected' : ''}>${esc(c.nom)}</option>`).join('')}</select></label>
       <label>Téléphone<input id="p_tel" value="${esc(p.tel)}"></label><label>E-mail<input id="p_email" type="email" value="${esc(p.email)}"></label></div></section>
-  <section class="carte"><h2>Mes lieux de résidence possibles</h2>
-    <p class="doux">Indique 2 ou 3 endroits d’où tu peux partir en stage (chez tes parents, un grand-parent, un internat…) et, pour chacun, la distance que tu peux parcourir.</p>
+  <section class="carte"><h2>Mes communes de résidence possibles</h2>
+    <p class="doux">Indique 2 ou 3 communes d’où tu peux partir en stage (chez tes parents, un grand-parent, un internat…) et, pour chacune, la distance que tu peux parcourir.
+      <b>Seul le nom de la commune est enregistré, jamais ton adresse.</b> Les distances sont calculées depuis le centre de la commune.</p>
     <div class="grille">${res.map((r, i) => `<div class="carte" style="margin:0"><h3>Lieu ${i + 1}${i === 2 ? ' <span class="doux">(facultatif)</span>' : ''}</h3>
       <label>Nom du lieu<input id="r${i}_label" value="${esc(r.label)}" placeholder="ex. Chez mes parents"></label>
-      <div style="font-weight:600;font-size:.88rem">Adresse ou commune</div>${champGeo('r' + i, r.adresse, r.lat, r.lon)}
+      <div style="font-weight:600;font-size:.88rem">Commune</div>${champGeo('r' + i, r.adresse, r.lat, r.lon, true)}
       <label style="margin-top:12px">Distance de déplacement possible : <b id="r${i}_km">${r.rayon}</b> km
         <input type="range" min="1" max="50" value="${r.rayon}" id="r${i}_rayon" data-i="rayon" data-k="r${i}_km"></label></div>`).join('')}</div>
     <div class="actions"><button class="btn" data-a="sauverProfil">Enregistrer mon profil</button></div></section>`;
@@ -312,11 +321,11 @@ A.sauverProfil = async () => {
   const p = S.el.profil, res = [];
   for (let i = 0; i < 3; i++) {
     const g = lireGeo('r' + i); if (!g.adresse) continue;
-    if (g.lat == null) throw new Error(`Lieu ${i + 1} : clique sur « Localiser » et choisis l’adresse dans la liste.`);
+    if (g.lat == null) throw new Error(`Lieu ${i + 1} : clique sur « Localiser » et choisis la commune dans la liste.`);
     res.push({ label: val(`r${i}_label`) || `Lieu ${i + 1}`, ...g, rayon: +val(`r${i}_rayon`) });
   }
   if (!val('p_nom') || !val('p_prenom')) throw new Error('Nom et prénom sont obligatoires.');
-  if (!res.length) throw new Error('Indique au moins un lieu de résidence (2 ou 3 de préférence).');
+  if (!res.length) throw new Error('Indique au moins une commune de résidence (2 ou 3 de préférence).');
   Object.assign(p, { prenom: val('p_prenom'), nom: val('p_nom'), classeId: val('p_classe') || p.classeId, tel: val('p_tel'), email: val('p_email'), residences: res });
   await sauver('profil'); journal('Profil mis à jour'); toast('Profil enregistré'); render();
 };
@@ -346,7 +355,7 @@ function ligneEnt(e, pos, p) {
 }
 function vueEntreprises() {
   const d = S.el, loc = d.profil.residences.filter(r => r.lat != null);
-  if (!loc.length) return `<section class="carte"><h2>Entreprises proches de chez moi</h2><p>Indique d’abord tes lieux de résidence pour recevoir des propositions.</p><button class="btn" data-a="aller" data-v="profil">Compléter mon profil</button></section>`;
+  if (!loc.length) return `<section class="carte"><h2>Entreprises proches de chez moi</h2><p>Indique d’abord tes communes de résidence pour recevoir des propositions.</p><button class="btn" data-a="aller" data-v="profil">Compléter mon profil</button></section>`;
   const tout = suggestions(d), nb = d.profil.nbSuggestions || 8;
   if (S.offset >= tout.length) S.offset = 0;
   const page = tout.slice(S.offset, S.offset + nb), pris = new Set(d.demandes.liste.map(x => x.entrepriseId));
@@ -472,7 +481,7 @@ document.addEventListener('click', ev => {
 document.addEventListener('change', ev => { const f = C[ev.target.dataset.c]; if (f) lancer(f, ev.target, ev); });
 document.addEventListener('input', ev => {
   const t = ev.target, f = I[t.dataset.i]; if (f) lancer(f, t, ev);
-  if (t.classList.contains('geo-adr')) { const p = t.dataset.p; $('#' + p + '_lat').value = ''; $('#' + p + '_lon').value = ''; $('#' + p + '_etat').textContent = 'Adresse modifiée : clique sur « Localiser ».'; }
+  if (t.classList.contains('geo-adr')) { const p = t.dataset.p; $('#' + p + '_lat').value = ''; $('#' + p + '_lon').value = ''; $('#' + p + '_etat').textContent = 'Saisie modifiée : clique sur « Localiser ».'; }
 });
 document.addEventListener('keydown', ev => {
   if (ev.key === 'Escape' && $('#modal').innerHTML) modal('');
