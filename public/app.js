@@ -212,7 +212,7 @@ function vueAuth() {
     ${t === 'eleve' && S.codeEleveRequis ? `<label>Code d’inscription élève <span class="doux petit">(donné par ton professeur)</span><input id="a_codeEleve" autocomplete="off"></label>` : ''}
     ${t === 'eleve' ? (S.pubClasses.length ? `<label>Classe<select id="a_classe"><option value="">— Choisir —</option>${S.pubClasses.map(c => `<option value="${c.id}">${esc(c.nom)}</option>`).join('')}</select></label>`
       : `<div class="alerte attention">Aucune classe n’a encore été créée. Demande à ton professeur de créer ta classe avant de t’inscrire.</div>`)
-      : `<label>Code professeur <span class="doux petit">(affiché au démarrage du serveur)</span><input id="a_code" autocomplete="off"></label>`}
+      : `<label>Code professeur <span class="doux petit">${API_GOOGLE ? '(dans Google Apps Script : Paramètres du projet › Propriétés du script › CODE_PROF)' : '(affiché au démarrage du serveur)'}</span><input id="a_code" autocomplete="off"></label>`}
     <label>Identifiant de connexion <span class="doux petit">(ex. prenom.nom)</span><input id="a_id" autocomplete="username"></label>
     <label>Mot de passe <span class="doux petit">(6 caractères minimum)</span><input id="a_pw" type="password" autocomplete="new-password"></label>
     <button class="btn" data-a="inscription">Créer mon compte</button>`;
