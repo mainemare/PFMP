@@ -3,7 +3,7 @@ VERSION "GITHUB PAGES + GOOGLE DRIVE"
 
 Principe
   - Les pages (dossier "public") sont publiees gratuitement sur GitHub Pages, en HTTPS :
-      https://ttfrisno-design.github.io/PFMP/
+      https://mainemare.github.io/PFMP/
   - Les donnees sont dans un classeur Google Sheets de votre Drive, gere par un petit script
     Google Apps Script (fichier google/Code.gs). Aucun serveur a faire tourner.
   - Donnees minimales : prenom, 2 premieres lettres du nom, classe, communes de residence,
@@ -32,12 +32,14 @@ Principe
 3. RELIER LES PAGES A L'API ET PUBLIER
   1. Dans le fichier public/config.js, collez l'URL :  window.STAGES_API = 'https://script.google.com/macros/s/.../exec';
      (ou donnez-moi l'URL, je fais la modification et la publication).
-  2. Sur GitHub, depot PFMP :
+  2. Sur GitHub, depot mainemare/PFMP :
        - Settings > General > Danger Zone > Change visibility > Public
          (GitHub Pages est gratuit uniquement pour les depots publics ; le depot ne contient aucune donnee d'eleve) ;
-       - Settings > Pages > Source : GitHub Actions.
+       - Settings > Pages > Build and deployment > Source : "GitHub Actions"
+         (et non "Deploy from a branch" : les pages sont dans le dossier public, pas a la racine) ;
+       - onglet Actions > "Publier sur GitHub Pages" > Run workflow, pour la premiere publication.
   3. Apres chaque envoi sur GitHub, le site se met a jour en 1 a 2 minutes (onglet Actions du depot).
-  4. Ouvrez https://ttfrisno-design.github.io/PFMP/ : creez votre compte professeur, les classes, la base
+  4. Ouvrez https://mainemare.github.io/PFMP/ : creez votre compte professeur, les classes, la base
      d'entreprises, puis communiquez aux eleves l'adresse du site et le code eleve.
 
 4. AU QUOTIDIEN
