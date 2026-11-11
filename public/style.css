@@ -30,11 +30,33 @@ input, select, textarea { width: 100%; font: inherit; font-weight: 400; padding:
 input[type=checkbox] { width: auto; margin: 0 6px 0 0; } input[type=color] { padding: 2px; height: 38px; } input[type=range] { padding: 0; }
 textarea { resize: vertical; }
 input:focus, select:focus, textarea:focus, button:focus-visible, .eleve:focus-visible { outline: 3px solid #a5b0ff; outline-offset: 1px; }
-.btn { background: var(--prim); color: #fff; border: 0; border-radius: 9px; padding: 9px 16px; font: inherit; font-weight: 600; cursor: pointer; }
+.btn { background: var(--prim); color: #fff; border: 0; border-radius: 9px; padding: 9px 16px; font: inherit; font-weight: 600; cursor: pointer;
+  box-shadow: 0 2px 0 rgba(20,30,60,.25); transition: transform .08s, box-shadow .08s, background .15s, filter .15s; }
 .btn:hover { background: var(--prim-f); }
+.btn.sec, .btn.danger { box-shadow: 0 2px 0 rgba(20,30,60,.12); }
 .btn.sec { background: #e9ecf7; color: var(--prim-f); } .btn.sec:hover { background: #dbe0f3; }
 .btn.danger { background: #fde8e8; color: #b91c1c; } .btn.danger:hover { background: #fbd5d5; }
 .btn.mini { padding: 5px 10px; font-size: .85rem; }
+
+/* Retour visuel des clics */
+.btn:active, header.top nav button:active, .onglets button:active, .auth .tabs button:active, .lien:active, .fenetre .fermer:active {
+  transform: translateY(2px) scale(.97); box-shadow: none; filter: brightness(.88);
+}
+button.occupe { cursor: progress; pointer-events: none; opacity: .8; }
+button.occupe::before {
+  content: ''; display: inline-block; width: .95em; height: .95em; margin-right: .5em; vertical-align: -.12em;
+  border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: tourne .7s linear infinite;
+}
+@keyframes tourne { to { transform: rotate(360deg); } }
+body::after {   /* barre de chargement en haut de l'écran */
+  content: ''; position: fixed; top: 0; left: 0; right: 0; height: 4px; z-index: 100; pointer-events: none;
+  background: linear-gradient(90deg, transparent, #facc15, #fb923c, transparent); background-size: 50% 100%; background-repeat: no-repeat;
+  opacity: 0; transition: opacity .2s;
+}
+body.charge::after { opacity: 1; animation: barre 1s linear infinite; }
+@keyframes barre { from { background-position: -50% 0; } to { background-position: 150% 0; } }
+body.charge { cursor: progress; }
+@media (prefers-reduced-motion: reduce) { button.occupe::before { animation-duration: 2s; } body.charge::after { animation-duration: 3s; } }
 .actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }
 .ligne { display: flex; gap: 8px; align-items: center; } .ligne input { margin-top: 0; }
 .lien { background: none; border: 0; color: var(--prim); text-decoration: underline; cursor: pointer; font: inherit; padding: 2px 0; display: block; text-align: left; }

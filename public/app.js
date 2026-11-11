@@ -64,7 +64,13 @@ const TITRES = { cv: 'CV', lettre: 'Lettre de motivation', memento: 'Memento d�
 // Deux modes : API Google Apps Script (STAGES_API renseignée dans config.js, pages sur GitHub Pages)
 // ou serveur classique (server.js / serveur.ps1) qui sert aussi les pages.
 const API_GOOGLE = (window.STAGES_API || '').trim();
+let requetesEnCours = 0;   // barre de chargement en haut de l'écran tant qu'une requête est en cours
+function chargement(delta) { requetesEnCours += delta; document.body.classList.toggle('charge', requetesEnCours > 0); }
 async function api(method, url, body) {
+  chargement(1);
+  try { return await appelApi(method, url, body); } finally { chargement(-1); }
+}
+async function appelApi(method, url, body) {
   let statut, j = null;
   try {
     if (API_GOOGLE) {
@@ -494,7 +500,18 @@ A.sauverDoc = async el => {
 };
 
 /* ---------- Événements ---------- */
-function lancer(f, el, ev) { (async () => f(el, ev))().catch(e => toast(e.message || 'Erreur', true)); }
+// Retour visuel : le bouton cliqué affiche un indicateur d'attente et ne peut pas être recliqué
+// tant que l'action (souvent 1 à 2 s avec Google) n'est pas terminée.
+function lancer(f, el, ev) {
+  const bouton = el && el.tagName === 'BUTTON' ? el : null;
+  if (bouton && bouton.classList.contains('occupe')) return;
+  let minuteur = null;
+  if (bouton) minuteur = setTimeout(() => { bouton.classList.add('occupe'); bouton.setAttribute('aria-busy', 'true'); }, 120);
+  (async () => f(el, ev))().catch(e => toast(e.message || 'Erreur', true)).finally(() => {
+    clearTimeout(minuteur);
+    if (bouton) { bouton.classList.remove('occupe'); bouton.removeAttribute('aria-busy'); }
+  });
+}
 document.addEventListener('click', ev => {
   const el = ev.target.closest('[data-a]'); if (!el || !A[el.dataset.a]) return;
   if (el.tagName === 'BUTTON' || el.tagName === 'A') ev.preventDefault();
