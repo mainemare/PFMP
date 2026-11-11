@@ -11,7 +11,7 @@ const eleveOuvert = () => S.eleves.find(e => e.id === S.dossier);
 async function chargerEleves() {
   S.eleves = (await api('GET', '/api/eleves')).map(e => ({ id: e.id, identifiant: e.identifiant, d: normaliser(e.docs) }))
     .sort((a, b) => (a.d.profil.nom + a.d.profil.prenom).localeCompare(b.d.profil.nom + b.d.profil.prenom, 'fr'));
-  if (S.codeEleve === undefined) { try { S.codeEleve = (await fetch('/api/admin/codes', { headers: { Authorization: 'Bearer ' + S.token } }).then(r => r.ok ? r.json() : {})).codeEleve || ''; } catch { S.codeEleve = ''; } }
+  if (S.codeEleve === undefined) { try { S.codeEleve = ((await api('GET', '/api/admin/codes')) || {}).codeEleve || ''; } catch { S.codeEleve = ''; } }
 }
 // Relit la version à jour sur le serveur avant de la modifier (plusieurs professeurs peuvent travailler en même temps).
 async function mutProf(id, fn) {
@@ -95,9 +95,9 @@ function vueDossier() {
 function dosSynthese(e) {
   const d = e.d, p = d.profil, o = d.prof.dates || {}, u = d.prof.urgence;
   return `<div class="grille"><div>
-    <h3>Profil</h3><p>Identifiant : <b>${esc(e.identifiant)}</b><br>Téléphone : ${esc(p.tel || '—')}<br>E-mail : ${esc(p.email || '—')}</p>
+    <h3>Profil</h3><p>Identifiant : <b>${esc(e.identifiant)}</b></p>
     <h3>Communes de résidence</h3>${p.residences.length ? p.residences.map(r => `<p>📍 <b>${esc(r.label)}</b> — ${esc(r.adresse)} · rayon ${r.rayon} km</p>`).join('') : '<p class="doux">Non renseignés.</p>'}
-    <h3>Dossier</h3><p>${['cv', 'lettre', 'memento'].map(t => `${TITRES[t]} : ${d[t].valide ? '✅ validé' : d[t].aRelire ? '🟣 à relire' : d[t].majLe ? 'corrigé' : '⬜ non commencé'}`).join('<br>')}</p>
+    <h3>Dossier</h3><p>${['cv', 'lettre', 'memento'].map(t => `${TITRES[t]} : ${d[t].valide ? '✅ validé' : d[t].aRelire ? '🟣 à relire' : d[t].correction ? 'corrigé' : t === 'memento' ? (d[t].majLe ? 'rédigé' : '⬜ non commencé') : '⬜ non déposé'}`).join('<br>')}</p>
     ${enUrgence(d) ? `<div class="alerte urgent"><b>🚨 Plan d’urgence</b><br>${u ? `Pris en main par ${esc(u.par)} le ${fmtDT(u.date)}${u.note ? `<br>« ${esc(u.note)} »` : ''}` : 'Personne n’a encore pris ce dossier en main.'}
       <label style="margin-top:8px">Note<input id="u_note" value="${esc(u ? u.note : '')}" placeholder="Actions engagées…"></label><button class="btn mini" data-a="prendreEnMain">${u ? 'Mettre à jour' : 'Je prends ce dossier en main'}</button></div>` : ''}
   </div><div>
@@ -130,15 +130,19 @@ A.supEleve = async () => {
 const dosSuivi = e => e.d.demandes.liste.length ? [...e.d.demandes.liste].reverse().map(x => carteDemande(x, true)).join('') : '<p class="doux">L’élève n’a encore sélectionné aucune entreprise.</p>';
 const dosActivite = e => e.d.journal.evenements.length ? `<ul class="journal">${[...e.d.journal.evenements].reverse().map(v => `<li><time>${fmtDT(v.date)}</time>${esc(v.texte)}</li>`).join('')}</ul>` : '<p class="doux">Aucune activité enregistrée.</p>';
 function dosDoc(e, t) {
-  const doc = e.d[t];
-  return `<p class="doux">${doc.majLe ? `Dernière modification par l’élève : ${fmtDT(doc.majLe)}.` : 'L’élève n’a pas encore travaillé ce document.'} Vous pouvez corriger directement le texte et laisser un commentaire.</p>
-    ${blocCorrection(doc)}${formDoc(t, doc)}
+  const doc = e.d[t], memento = t === 'memento';
+  const intro = memento
+    ? (doc.majLe ? `Dernière modification par l’élève : ${fmtDT(doc.majLe)}.` : 'L’élève n’a pas encore travaillé son memento.') + ' Vous pouvez corriger directement le texte et laisser un commentaire.'
+    : (doc.deposeLe ? `📄 Déposé par l’élève dans son <b>espace documentaire de l’ENT</b> le ${fmtDT(doc.deposeLe)}. Ouvrez-le depuis l’ENT (fichiers partagés avec vous), annotez-le si besoin, puis indiquez ici votre retour.`
+      : 'L’élève n’a pas encore signalé de dépôt sur l’ENT.');
+  return `<p class="doux">${intro}</p>
+    ${blocCorrection(doc)}${memento ? formDoc(t, doc) : ''}
     <label>Commentaire pour l’élève<textarea id="f_commentaire" rows="3">${esc(doc.correction ? doc.correction.commentaire : '')}</textarea></label>
     <label><input type="checkbox" id="f_valide" ${doc.valide ? 'checked' : ''}>Document validé</label>
     <button class="btn" data-a="corriger" data-t="${t}">Enregistrer la correction</button>`;
 }
 A.corriger = async el => {
-  const t = el.dataset.t, e = eleveOuvert(), doc = e.d[t]; lireDoc(t, doc);
+  const t = el.dataset.t, e = eleveOuvert(), doc = e.d[t]; if (CHAMPS[t]) lireDoc(t, doc);
   doc.correction = { par: nomComplet(S.user), date: maintenant(), commentaire: val('f_commentaire') };
   doc.valide = $('#f_valide').checked; doc.aRelire = false;
   await putDoc(`eleve/${e.id}/${t}`, doc); render(); toast('Correction enregistrée');
@@ -189,7 +193,7 @@ function vueAlertes() {
         <td style="min-width:170px">${barre(niveau(d), true)}</td><td>${moi ? '<span class="badge" style="background:#dc2626">Vous</span>' : esc(cl && nomProf(cl.referentId) || 'Non désigné')}</td>
         <td>${d.prof.urgence ? `✅ ${esc(d.prof.urgence.par)}<br><span class="petit doux">${fmt(d.prof.urgence.date)}</span>` : '<b>À prendre en main</b>'}</td><td>${bouton(e, 'synthese')}</td></tr>`; }).join('')}</table></div>` : '<p>✅ Aucun élève en situation d’urgence.</p>'}</section>
   <section class="carte"><h2>🟣 Documents à relire (${relire.length})</h2>
-    ${relire.length ? relire.map(({ e, t }) => `<p><b>${esc(nomEleve(e))}</b> — ${TITRES[t]} modifié le ${fmt(e.d[t].majLe)} ${bouton(e, t)}</p>`).join('') : '<p class="doux">Rien à relire.</p>'}</section>
+    ${relire.length ? relire.map(({ e, t }) => `<p><b>${esc(nomEleve(e))}</b> — ${TITRES[t]} ${e.d[t].deposeLe ? 'déposé sur l’ENT' : 'modifié'} le ${fmt(e.d[t].deposeLe || e.d[t].majLe)} ${bouton(e, t)}</p>`).join('') : '<p class="doux">Rien à relire.</p>'}</section>
   <section class="carte"><h2>😴 Sans activité depuis 14 jours (${inactifs.length})</h2>
     ${inactifs.length ? inactifs.map(e => `<p><b>${esc(nomEleve(e))}</b> <span class="petit doux">${esc((classeDe(e.d) || {}).nom || '')} · niveau ${niveau(e.d)}</span> ${bouton(e, 'conseils')}</p>`).join('') : '<p class="doux">Tous les élèves concernés sont actifs.</p>'}</section>`;
 }

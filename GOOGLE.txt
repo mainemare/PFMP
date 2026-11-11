@@ -1,0 +1,55 @@
+VERSION "GITHUB PAGES + GOOGLE DRIVE"
+====================================
+
+Principe
+  - Les pages (dossier "public") sont publiees gratuitement sur GitHub Pages, en HTTPS :
+      https://ttfrisno-design.github.io/PFMP/
+  - Les donnees sont dans un classeur Google Sheets de votre Drive, gere par un petit script
+    Google Apps Script (fichier google/Code.gs). Aucun serveur a faire tourner.
+  - Donnees minimales : prenom, 2 premieres lettres du nom, classe, communes de residence,
+    suivi des appels et memento. Pas d'e-mail, pas de telephone, pas d'adresse d'eleve.
+  - CV et lettres de motivation : en PDF dans l'espace documentaire de L'Educ de Normandie (ENT),
+    partages avec le professeur. L'application ne garde que la date de depot et le retour du professeur.
+  - Les eleves n'ont pas besoin de compte Google : ils se connectent avec l'identifiant de l'application.
+
+1. CREER LE CLASSEUR (une seule fois)
+  1. Dans Google Drive, creez un classeur Google Sheets, par exemple "Suivi des stages - donnees".
+     Ne le partagez avec personne.
+  2. Menu Extensions > Apps Script.
+  3. Effacez le contenu du fichier Code.gs propose, collez tout le contenu de google/Code.gs, enregistrez.
+  4. En haut, choisissez la fonction "installer", puis cliquez sur Executer.
+     Google demande une autorisation : choisissez votre compte. L'ecran "Google n'a pas valide cette
+     application" est normal pour un script personnel : Parametres avances > Acceder au projet > Autoriser.
+  5. Le journal d'execution affiche le code professeur et le code eleve. Notez-les.
+
+2. PUBLIER L'API
+  1. Toujours dans Apps Script : Deployer > Nouveau deploiement > (roue dentee) Application Web.
+  2. Executer en tant que : Moi.   Qui a acces : Tout le monde.
+     (Indispensable pour que les eleves y accedent sans compte Google. L'acces aux donnees reste
+     protege par les identifiants et mots de passe de l'application.)
+  3. Deployer, puis copiez l'URL de l'application Web (elle se termine par /exec).
+
+3. RELIER LES PAGES A L'API ET PUBLIER
+  1. Dans le fichier public/config.js, collez l'URL :  window.STAGES_API = 'https://script.google.com/macros/s/.../exec';
+     (ou donnez-moi l'URL, je fais la modification et la publication).
+  2. Sur GitHub, depot PFMP :
+       - Settings > General > Danger Zone > Change visibility > Public
+         (GitHub Pages est gratuit uniquement pour les depots publics ; le depot ne contient aucune donnee d'eleve) ;
+       - Settings > Pages > Source : GitHub Actions.
+  3. Apres chaque envoi sur GitHub, le site se met a jour en 1 a 2 minutes (onglet Actions du depot).
+  4. Ouvrez https://ttfrisno-design.github.io/PFMP/ : creez votre compte professeur, les classes, la base
+     d'entreprises, puis communiquez aux eleves l'adresse du site et le code eleve.
+
+4. AU QUOTIDIEN
+  - Ne modifiez pas l'onglet "donnees" du classeur a la main.
+  - Sauvegarde : Google Sheets garde un historique (Fichier > Historique des versions). Pour une copie
+    complete : Fichier > Creer une copie, de temps en temps.
+  - Changer un code d'inscription : Apps Script > Parametres du projet > Proprietes du script.
+  - Si Code.gs est modifie : Deployer > Gerer les deploiements > (crayon) > Version : Nouvelle version.
+    L'URL reste la meme, rien a changer dans config.js.
+  - Fin d'annee : supprimez les comptes eleves depuis leur dossier (bouton "Supprimer ce compte eleve").
+
+Limites
+  - Chaque action prend 1 a 2 secondes (temps de reponse de Google Apps Script).
+  - Convient pour quelques classes (quelques centaines d'eleves au plus).
+  - Les alertes s'affichent dans l'application (pas d'e-mail ni de SMS).

@@ -38,7 +38,8 @@ LOCALISATION DES ADRESSES
   Pour les eleves, seule la COMMUNE de residence est demandee et enregistree (jamais d'adresse).
 
 MISE EN LIGNE SUR INTERNET
-  Voir HEBERGEMENT.txt (version Node.js : server.js).
+  Version conseillee : GitHub Pages + Google Drive, sans serveur. Voir GOOGLE.txt.
+  Autres possibilites (serveur Node.js, NAS, PC dedie) : voir HEBERGEMENT.txt.
 
 LIMITES A CONNAITRE
   - Les alertes s'affichent dans l'application (a la connexion et sur la page d'accueil) :

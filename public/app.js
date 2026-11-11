@@ -20,13 +20,14 @@ const fmt = s => s ? s.slice(0, 10).split('-').reverse().join('/') : '…';
 const fmtDT = s => { const d = new Date(s); return d.toLocaleDateString('fr-FR') + ' à ' + d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }); };
 const jours = s => s ? Math.round((new Date(s + 'T00:00:00') - new Date(today() + 'T00:00:00')) / 864e5) : null;
 const nomComplet = u => `${u.prenom} ${u.nom}`.trim();
+const initiales = s => String(s || '').trim().toUpperCase().replace(/[^A-ZÀ-ÖØ-Þ]/g, '').slice(0, 2);
 
 const ERR = {
   identifiants: 'Identifiant ou mot de passe incorrect.', identifiant_pris: 'Cet identifiant est déjà utilisé.',
   identifiant_invalide: 'Identifiant : 3 à 40 caractères (lettres sans accent, chiffres, point, tiret).',
   motdepasse_court: 'Le mot de passe doit contenir au moins 6 caractères.', code_prof: 'Code professeur incorrect.',
   classe_requise: 'Choisis ta classe.', nom_requis: 'Nom et prénom sont obligatoires.', interdit: 'Action non autorisée.',
-  code_eleve: 'Code d’inscription élève incorrect : demande-le à ton professeur.', trop_essais: 'Trop de tentatives. Réessaie dans quelques minutes.',
+  code_eleve: 'Code d’inscription élève incorrect : demande-le à ton professeur.', nom_initiales: 'Pour le nom, indique seulement les 2 premières lettres.', trop_essais: 'Trop de tentatives. Réessaie dans quelques minutes.',
   non_connecte: 'Session expirée, reconnecte-toi.', introuvable: 'Élément introuvable.',
 };
 const NIV = [
@@ -39,9 +40,11 @@ const STATUTS = {
   protocole: ['Accord – protocole signé', '#0d9488'], convention: ['Convention signée', '#15803d'],
 };
 const DEF = {
-  profil: () => ({ nom: '', prenom: '', classeId: '', tel: '', email: '', residences: [], nbSuggestions: 8 }),
-  cv: () => ({ titre: '', coordonnees: '', objectif: '', formation: '', experiences: '', competences: '', interets: '', aRelire: false, valide: false, correction: null }),
-  lettre: () => ({ objet: '', texte: '', aRelire: false, valide: false, correction: null }),
+  // Données minimales : prénom + 2 premières lettres du nom, pas d'e-mail ni de téléphone.
+  profil: () => ({ nom: '', prenom: '', classeId: '', residences: [], nbSuggestions: 8 }),
+  // CV et lettre : les PDF sont dans l'espace documentaire de l'ENT ; ici, seulement leur suivi.
+  cv: () => ({ deposeLe: null, aRelire: false, valide: false, correction: null }),
+  lettre: () => ({ deposeLe: null, aRelire: false, valide: false, correction: null }),
   memento: () => ({ accroche: '', perso: '', pro: '', motsCles: '', aRelire: false, valide: false, correction: null }),
   demandes: () => ({ liste: [] }),
   journal: () => ({ evenements: [] }),
@@ -50,12 +53,7 @@ const DEF = {
 };
 const normaliser = docs => { const o = {}; for (const k in DEF) o[k] = Object.assign(DEF[k](), (docs && docs[k]) || {}); return o; };
 const CHAMPS = {
-  cv: [['titre', 'Titre du CV', 'ex. Élève de 3e à la recherche d’un stage d’observation', 1], ['coordonnees', 'Coordonnées', 'Adresse, téléphone, e-mail', 3],
-    ['objectif', 'Mon projet / ce que je recherche', '', 3], ['formation', 'Formation', 'Établissement, classe, options, diplômes…', 4],
-    ['experiences', 'Expériences (stages, bénévolat, petits boulots…)', '', 5], ['competences', 'Compétences et qualités', 'Langues, informatique, qualités personnelles…', 4],
-    ['interets', 'Centres d’intérêt', 'Sport, associations, loisirs…', 3]],
-  lettre: [['objet', 'Objet', 'ex. Demande de stage du … au …', 1], ['texte', 'Texte de la lettre', 'Madame, Monsieur,\n\n…', 16]],
-  memento: [['accroche', 'Ma phrase d’accroche au téléphone', 'Bonjour, je m’appelle … Je suis élève en … au … Je vous appelle car je recherche un stage du … au …', 3],
+  memento: [['accroche', 'Ma phrase d’accroche au téléphone', 'Bonjour, je m’appelle (prénom)… Je suis élève en … Je vous appelle car je recherche un stage du … au …', 3],
     ['perso', 'Me présenter personnellement', 'Qui je suis, mes qualités, ce que j’aime faire…', 4],
     ['pro', 'Me présenter professionnellement', 'Ma formation, mon projet, ce que je sais faire, pourquoi cette entreprise m’intéresse…', 4],
     ['motsCles', 'Mes mots-clés à ne pas oublier', 'dates du stage · durée · convention · à qui envoyer mon CV · merci · au revoir', 3]],
@@ -63,17 +61,27 @@ const CHAMPS = {
 const TITRES = { cv: 'CV', lettre: 'Lettre de motivation', memento: 'Memento d’appel' };
 
 /* ---------- Serveur ---------- */
+// Deux modes : API Google Apps Script (STAGES_API renseignée dans config.js, pages sur GitHub Pages)
+// ou serveur classique (server.js / serveur.ps1) qui sert aussi les pages.
+const API_GOOGLE = (window.STAGES_API || '').trim();
 async function api(method, url, body) {
-  const headers = { 'Content-Type': 'application/json' };
-  if (S.token) headers.Authorization = 'Bearer ' + S.token;
-  let r;
-  try { r = await fetch(url, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) }); }
-  catch { throw Object.assign(new Error('Serveur injoignable. Vérifie ta connexion Internet.'), { reseau: true }); }
-  const t = await r.text(); let j = null;
-  try { j = t ? JSON.parse(t) : null; } catch { /* réponse non JSON */ }
-  if (!r.ok) {
-    if (r.status === 401 && S.user) { sessionFermee(); render(); }
-    throw new Error(ERR[j && j.erreur] || 'Erreur du serveur.');
+  let statut, j = null;
+  try {
+    if (API_GOOGLE) {
+      // Requête « simple » (text/plain) : seule forme acceptée par Apps Script depuis un autre site.
+      const r = await fetch(API_GOOGLE, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ m: method, p: url, t: S.token, b: body }) });
+      const rep = await r.json(); statut = rep.s; j = rep.d;
+    } else {
+      const headers = { 'Content-Type': 'application/json' };
+      if (S.token) headers.Authorization = 'Bearer ' + S.token;
+      const r = await fetch(url, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
+      const t = await r.text(); statut = r.status;
+      try { j = t ? JSON.parse(t) : null; } catch { /* réponse non JSON */ }
+    }
+  } catch { throw Object.assign(new Error('Serveur injoignable. Vérifie ta connexion Internet.'), { reseau: true }); }
+  if (statut < 200 || statut >= 300) {
+    if (statut === 401 && S.user) { sessionFermee(); render(); }
+    throw Object.assign(new Error(ERR[j && j.erreur] || 'Erreur du serveur.'), { statut });
   }
   return j;
 }
@@ -199,7 +207,8 @@ function vueAuth() {
   let corps;
   if (t === 'connexion') corps = `<label>Identifiant<input id="a_id" autocomplete="username"></label><label>Mot de passe<input id="a_pw" type="password" autocomplete="current-password"></label>
     <button class="btn" data-a="connexion">Se connecter</button>`;
-  else corps = `<div class="deux"><label>Prénom<input id="a_prenom"></label><label>Nom<input id="a_nom"></label></div>
+  else corps = `<div class="deux"><label>Prénom<input id="a_prenom" maxlength="40"></label>
+    ${t === 'eleve' ? `<label>Nom <span class="doux petit">(2 premières lettres seulement)</span><input id="a_nom" maxlength="2" style="text-transform:uppercase" placeholder="ex. MA"></label>` : '<label>Nom<input id="a_nom"></label>'}</div>
     ${t === 'eleve' && S.codeEleveRequis ? `<label>Code d’inscription élève <span class="doux petit">(donné par ton professeur)</span><input id="a_codeEleve" autocomplete="off"></label>` : ''}
     ${t === 'eleve' ? (S.pubClasses.length ? `<label>Classe<select id="a_classe"><option value="">— Choisir —</option>${S.pubClasses.map(c => `<option value="${c.id}">${esc(c.nom)}</option>`).join('')}</select></label>`
       : `<div class="alerte attention">Aucune classe n’a encore été créée. Demande à ton professeur de créer ta classe avant de t’inscrire.</div>`)
@@ -213,7 +222,7 @@ function vueAuth() {
 A.auth = el => { S.auth = el.dataset.t; render(); };
 A.connexion = async () => ouvrirSession(await api('POST', '/api/connexion', { identifiant: val('a_id'), motdepasse: $('#a_pw').value }));
 A.inscription = async () => ouvrirSession(await api('POST', '/api/inscription', {
-  role: S.auth, prenom: val('a_prenom'), nom: val('a_nom'), identifiant: val('a_id'), motdepasse: $('#a_pw').value, classeId: val('a_classe'), codeProf: val('a_code'), codeEleve: val('a_codeEleve'),
+  role: S.auth, prenom: val('a_prenom'), nom: S.auth === 'eleve' ? initiales(val('a_nom')) : val('a_nom'), identifiant: val('a_id'), motdepasse: $('#a_pw').value, classeId: val('a_classe'), codeProf: val('a_code'), codeEleve: val('a_codeEleve'),
 }));
 async function ouvrirSession(r) {
   S.token = r.token; localStorage.setItem('stages_token', r.token); S.user = r.user; S.vue = '';
@@ -221,7 +230,7 @@ async function ouvrirSession(r) {
 }
 async function chargerPublic() {
   // Le code élève n'existe que sur la version hébergée (server.js) ; la version Windows répond 404.
-  try { S.codeEleveRequis = !!(await fetch('/api/public/info').then(r => r.ok ? r.json() : {})).codeEleveRequis; } catch { S.codeEleveRequis = false; }
+  try { S.codeEleveRequis = !!((await api('GET', '/api/public/info')) || {}).codeEleveRequis; } catch { S.codeEleveRequis = false; }
   try { S.pubClasses = ((await api('GET', '/api/public/classes')) || {}).classes || []; } catch { S.pubClasses = []; }
 }
 async function chargerCommun() {
@@ -284,7 +293,7 @@ function vueAccueil() {
   const d = S.el, n = niveau(d), al = alerteEleve(d);
   const nonLus = d.prof.conseils.filter(c => !d.etat.conseilsLus.includes(c.id)), rel = relancesDues(d);
   const todo = [[d.profil.residences.some(r => r.lat != null), 'Compléter mon profil et mes communes de résidence', 'profil'], [!!d.memento.accroche.trim(), 'Préparer mon memento d’appel', 'memento'],
-    [!!d.cv.formation.trim(), 'Rédiger mon CV', 'cv'], [!!d.lettre.texte.trim(), 'Rédiger ma lettre de motivation', 'lettre'], [d.demandes.liste.length > 0, 'Sélectionner des entreprises à appeler', 'entreprises']];
+    [!!d.cv.deposeLe, 'Déposer mon CV sur l’ENT', 'cv'], [!!d.lettre.deposeLe, 'Déposer ma lettre de motivation sur l’ENT', 'lettre'], [d.demandes.liste.length > 0, 'Sélectionner des entreprises à appeler', 'entreprises']];
   return `<div class="alerte ${al.c}" role="alert">${al.h}</div>
   <section class="carte"><h2>Où j’en suis</h2>${barre(n)}
     <div class="etapes">${NIV.map((v, i) => `<div class="${i <= n ? 'fait' : ''}" style="${i <= n ? `background:${NIV[n].c}` : ''}"><b>${i}</b>${v.l}</div>`).join('')}</div>
@@ -303,9 +312,10 @@ A.conseilsLus = async () => { S.el.etat.conseilsLus = S.el.prof.conseils.map(c =
 function vueProfil() {
   const p = S.el.profil, res = [0, 1, 2].map(i => p.residences[i] || { label: '', adresse: '', lat: null, lon: null, rayon: 10 });
   return `<section class="carte"><h2>Mon profil</h2><div class="deux">
-      <label>Prénom<input id="p_prenom" value="${esc(p.prenom)}"></label><label>Nom<input id="p_nom" value="${esc(p.nom)}"></label>
-      <label>Classe<select id="p_classe">${S.classes.map(c => `<option value="${c.id}" ${c.id === p.classeId ? 'selected' : ''}>${esc(c.nom)}</option>`).join('')}</select></label>
-      <label>Téléphone<input id="p_tel" value="${esc(p.tel)}"></label><label>E-mail<input id="p_email" type="email" value="${esc(p.email)}"></label></div></section>
+      <label>Prénom<input id="p_prenom" value="${esc(p.prenom)}" maxlength="40"></label>
+      <label>Nom <span class="doux petit">(2 premières lettres)</span><input id="p_nom" value="${esc(p.nom)}" maxlength="2" style="text-transform:uppercase"></label>
+      <label>Classe<select id="p_classe">${S.classes.map(c => `<option value="${c.id}" ${c.id === p.classeId ? 'selected' : ''}>${esc(c.nom)}</option>`).join('')}</select></label></div>
+    <p class="doux petit">🔒 Pour protéger tes données, l’application ne garde que ton prénom et les 2 premières lettres de ton nom : ni e-mail, ni téléphone, ni adresse.</p></section>
   <section class="carte"><h2>Mes communes de résidence possibles</h2>
     <p class="doux">Indique 2 ou 3 communes d’où tu peux partir en stage (chez tes parents, un grand-parent, un internat…) et, pour chacune, la distance que tu peux parcourir.
       <b>Seul le nom de la commune est enregistré, jamais ton adresse.</b> Les distances sont calculées depuis le centre de la commune.</p>
@@ -324,9 +334,11 @@ A.sauverProfil = async () => {
     if (g.lat == null) throw new Error(`Lieu ${i + 1} : clique sur « Localiser » et choisis la commune dans la liste.`);
     res.push({ label: val(`r${i}_label`) || `Lieu ${i + 1}`, ...g, rayon: +val(`r${i}_rayon`) });
   }
-  if (!val('p_nom') || !val('p_prenom')) throw new Error('Nom et prénom sont obligatoires.');
+  const nom = initiales(val('p_nom'));
+  if (!nom || !val('p_prenom')) throw new Error('Prénom et 2 premières lettres du nom sont obligatoires.');
   if (!res.length) throw new Error('Indique au moins une commune de résidence (2 ou 3 de préférence).');
-  Object.assign(p, { prenom: val('p_prenom'), nom: val('p_nom'), classeId: val('p_classe') || p.classeId, tel: val('p_tel'), email: val('p_email'), residences: res });
+  Object.assign(p, { prenom: val('p_prenom'), nom, classeId: val('p_classe') || p.classeId, residences: res });
+  delete p.tel; delete p.email;
   await sauver('profil'); journal('Profil mis à jour'); toast('Profil enregistré'); render();
 };
 
@@ -448,27 +460,37 @@ function formDoc(type, doc) {
 }
 function lireDoc(type, doc) { for (const [k] of CHAMPS[type]) doc[k] = $('#f_' + k).value; }
 function vueDoc(type) {
-  const doc = S.el[type], intro = {
-    cv: 'Rédige ton CV rubrique par rubrique. Ton professeur peut le relire et le corriger.',
-    lettre: 'Explique qui tu es, pourquoi tu cherches ce stage et pourquoi dans cette entreprise.',
-    memento: 'Ton aide-mémoire pour téléphoner : quelques mots ou un texte pour te présenter personnellement et professionnellement. Il s’affiche dans chaque fiche d’appel.',
-  }[type];
-  return `<section class="carte"><h2>${TITRES[type]}</h2><p class="doux">${intro}</p>${blocCorrection(doc)}${formDoc(type, doc)}
-    <div class="actions"><button class="btn" data-a="sauverDoc" data-t="${type}">Enregistrer</button>
-    ${type !== 'memento' ? `<button class="btn sec" data-a="imprimerDoc" data-t="${type}">🖨 Aperçu / Imprimer / PDF</button>` : ''}</div></section>`;
+  const doc = S.el[type];
+  if (type !== 'memento') return vueDepot(type, doc);
+  return `<section class="carte"><h2>${TITRES[type]}</h2><p class="doux">Ton aide-mémoire pour téléphoner : quelques mots ou un texte pour te présenter personnellement et professionnellement. Il s’affiche dans chaque fiche d’appel.</p>
+    <div class="alerte info petit">🔒 N’écris ici ni ton nom de famille, ni ton adresse, ni ton numéro de téléphone.</div>
+    ${blocCorrection(doc)}${formDoc(type, doc)}
+    <div class="actions"><button class="btn" data-a="sauverDoc" data-t="${type}">Enregistrer</button></div></section>`;
 }
+// CV et lettre : rédigés par l'élève, déposés en PDF dans l'espace documentaire de L'Educ de Normandie.
+function vueDepot(type, doc) {
+  const quoi = type === 'cv' ? 'ton CV' : 'ta lettre de motivation', fichier = type === 'cv' ? 'CV' : 'Lettre-motivation';
+  return `<section class="carte"><h2>${TITRES[type]}</h2>${blocCorrection(doc)}
+    <p>${doc.deposeLe ? `✅ Déposé${doc.aRelire ? ' et signalé à ton professeur' : ''} le <b>${fmtDT(doc.deposeLe)}</b>.` : '⬜ Pas encore déposé.'}</p>
+    <ol>
+      <li>Rédige ${quoi} (traitement de texte, modèle conseillé par ton professeur…) et enregistre-le <b>en PDF</b>, par exemple <code>${fichier}.pdf</code>.</li>
+      <li>Ouvre <b>L’Educ de Normandie</b> (ENT) › <b>Espace documentaire</b>, et dépose le PDF dans un dossier <b>Stage</b>.</li>
+      <li>Partage le fichier avec ton professeur (bouton <b>Partager</b>) pour qu’il puisse le lire et l’annoter.</li>
+      <li>Reviens ici et clique sur le bouton ci-dessous pour le prévenir.</li>
+    </ol>
+    <p class="doux petit">🔒 Ton CV et ta lettre restent dans l’ENT : cette application n’en garde aucune copie.</p>
+    <div class="actions"><button class="btn" data-a="deposer" data-t="${type}">📤 ${doc.deposeLe ? 'J’ai mis à jour' : 'J’ai déposé'} ${quoi} sur l’ENT</button></div></section>`;
+}
+A.deposer = async el => {
+  const t = el.dataset.t, ancien = S.el[t];
+  // On réécrit un document propre (seulement le suivi), sans aucun texte de CV ou de lettre.
+  S.el[t] = { deposeLe: maintenant(), aRelire: true, valide: false, correction: ancien.correction || null };
+  await sauver(t); journal(`${TITRES[t]} déposé sur l’ENT`); toast('Ton professeur est prévenu'); render();
+};
 A.sauverDoc = async el => {
   const t = el.dataset.t, doc = S.el[t]; lireDoc(t, doc);
   doc.aRelire = true; doc.valide = false; doc.majLe = maintenant();
   await sauver(t); journal(`${TITRES[t]} mis à jour`); toast('Enregistré — ton professeur pourra le relire'); render();
-};
-A.imprimerDoc = el => {
-  const t = el.dataset.t, d = S.el, doc = d[t]; lireDoc(t, doc);
-  const nom = esc(`${d.profil.prenom} ${d.profil.nom.toUpperCase()}`), sec = (h, v) => v && v.trim() ? `<h2>${h}</h2><p>${esc(v)}</p>` : '';
-  $('#print').innerHTML = t === 'cv'
-    ? `<h1>${nom}</h1><p><i>${esc(doc.titre)}</i></p><p>${esc(doc.coordonnees)}</p>${sec('Projet', doc.objectif)}${sec('Formation', doc.formation)}${sec('Expériences', doc.experiences)}${sec('Compétences', doc.competences)}${sec('Centres d’intérêt', doc.interets)}`
-    : `<p><b>${nom}</b>\n${esc(d.cv.coordonnees)}</p><p style="text-align:right">Le ${new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}</p><p><b>Objet : ${esc(doc.objet)}</b></p><p>${esc(doc.texte)}</p><p style="text-align:right">${nom}</p>`;
-  window.print();
 };
 
 /* ---------- Événements ---------- */
@@ -533,4 +555,4 @@ function majInstaller() { for (const z of $$('.zone-installer')) z.innerHTML = b
 window.addEventListener('beforeinstallprompt', ev => { ev.preventDefault(); invite = ev; majInstaller(); });
 window.addEventListener('appinstalled', () => { invite = null; majInstaller(); toast('Application installée'); });
 A.installer = async () => { if (!invite) return; invite.prompt(); await invite.userChoice; invite = null; majInstaller(); };
-if ('serviceWorker' in navigator && window.isSecureContext) window.addEventListener('load', () => { navigator.serviceWorker.register('/sw.js').catch(() => {}); });
+if ('serviceWorker' in navigator && window.isSecureContext) window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {}); });
