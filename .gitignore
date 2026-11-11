@@ -3,3 +3,6 @@ donnees/
 .claude/
 node_modules/
 .env
+
+# Fichiers d'import (donnees d'entreprises et contacts) : jamais sur GitHub
+import/

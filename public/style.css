@@ -38,6 +38,24 @@ input:focus, select:focus, textarea:focus, button:focus-visible, .eleve:focus-vi
 .btn.danger { background: #fde8e8; color: #b91c1c; } .btn.danger:hover { background: #fbd5d5; }
 .btn.mini { padding: 5px 10px; font-size: .85rem; }
 
+/* Carte des entreprises */
+.carte-map { height: 420px; border-radius: 12px; overflow: hidden; border: 1px solid var(--trait); background: #e8ecf3; z-index: 0; }
+@media (max-width: 640px) { .carte-map { height: 340px; } }
+.legende { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 8px; color: var(--doux); }
+.legende span { display: inline-flex; align-items: center; gap: 6px; }
+.pt { display: inline-block; width: 14px; height: 14px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px #9aa3b5; }
+.pt.maison { background: #2563eb; } .pt.sugg { background: #ea580c; } .pt.prof { background: #7c3aed; } .pt.demande { background: #15803d; }
+.pin { display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; color: #fff; font: 700 12px/1 "Segoe UI", sans-serif;
+  border: 2px solid #fff; box-shadow: 0 2px 6px rgba(0,0,0,.35); background: #ea580c; }
+.pin.prof { background: #7c3aed; } .pin.maison { background: #fff; width: 30px; height: 30px; font-size: 16px; border-color: #2563eb; }
+.pin.demande { width: 22px; height: 22px; font-size: 11px; opacity: .9; }
+.pin.approx { border-style: dashed; opacity: .85; }   /* position approximative (centre de la commune) */
+.num { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; margin-top: 1px; border-radius: 50%;
+  background: #ea580c; color: #fff; font-weight: 700; font-size: .8rem; }
+.num.prof { background: #7c3aed; }
+.liens-ent { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 3px; }
+.liens-ent .lien { display: inline; padding: 0; } .liens-ent a { color: var(--prim); }
+
 /* Retour visuel des clics */
 .btn:active, header.top nav button:active, .onglets button:active, .auth .tabs button:active, .lien:active, .fenetre .fermer:active {
   transform: translateY(2px) scale(.97); box-shadow: none; filter: brightness(.88);

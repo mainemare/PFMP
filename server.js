@@ -86,7 +86,7 @@ function envoyer(req, res, code, corps, type) {
   const h = {
     'Content-Type': type || 'application/json; charset=utf-8', 'Content-Length': b.length, 'Cache-Control': 'no-store',
     'X-Content-Type-Options': 'nosniff', 'X-Frame-Options': 'DENY', 'Referrer-Policy': 'no-referrer',
-    'Content-Security-Policy': "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://data.geopf.fr https://api-adresse.data.gouv.fr; frame-ancestors 'none'",
+    'Content-Security-Policy': "default-src 'self'; script-src 'self' https://unpkg.com; style-src 'self' 'unsafe-inline' https://unpkg.com; img-src 'self' data: https://*.tile.openstreetmap.org; connect-src 'self' https://data.geopf.fr https://api-adresse.data.gouv.fr; frame-ancestors 'none'",
   };
   if (req.headers['x-forwarded-proto'] === 'https') h['Strict-Transport-Security'] = 'max-age=31536000';
   res.writeHead(code, h);

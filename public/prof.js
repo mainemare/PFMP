@@ -258,6 +258,7 @@ function vueBase() {
   return `<section class="carte"><h2>Base d’entreprises (${S.entreprises.length})</h2>
     <p class="doux">Les élèves reçoivent 5 à 10 propositions parmi les entreprises localisées situées dans leur rayon de déplacement.</p>
     <div class="actions"><button class="btn" data-a="editEnt">➕ Ajouter une entreprise</button><button class="btn sec" data-a="importEnt">📥 Importer une liste</button>
+      <button class="btn sec" data-a="choisirFichierEnt">📂 Importer un fichier préparé (.json)</button><input type="file" id="fichierEnt" accept=".json,application/json" hidden data-c="fichierEnt">
       ${sansGeo ? `<button class="btn sec" data-a="geoManquantes">📍 Localiser les ${sansGeo} adresse(s) non localisée(s)</button>` : ''}
       ${S.entreprises.length ? '' : '<button class="btn sec" data-a="demo">🧪 Charger des données de démonstration</button>'}</div>
     <label style="margin-top:12px">Rechercher<input data-i="qEnt" value="${esc(S.qEnt)}" placeholder="Nom, secteur, ville…"></label>
@@ -265,13 +266,35 @@ function vueBase() {
 }
 function tableEnt() {
   const q = S.qEnt.trim().toLowerCase();
-  const l = S.entreprises.filter(e => !q || `${e.nom} ${e.secteur} ${e.adresse} ${e.contact}`.toLowerCase().includes(q)).sort((a, b) => a.nom.localeCompare(b.nom, 'fr'));
-  if (!l.length) return '<p class="doux">Aucune entreprise.</p>';
-  return `<table><tr><th>Entreprise</th><th>Adresse</th><th>Contact</th><th></th></tr>${l.map(e => `<tr><td><b>${esc(e.nom)}</b>${e.secteur ? `<br><span class="badge clair">${esc(e.secteur)}</span>` : ''}</td>
+  const tous = S.entreprises.filter(e => !q || `${e.nom} ${e.secteur} ${e.activite || ''} ${e.adresse} ${e.contact}`.toLowerCase().includes(q)).sort((a, b) => a.nom.localeCompare(b.nom, 'fr'));
+  if (!tous.length) return '<p class="doux">Aucune entreprise.</p>';
+  const MAX = 200, l = tous.slice(0, MAX);   // au-delà, le tableau devient trop lourd à afficher
+  return `${tous.length > MAX ? `<p class="doux petit">${tous.length} résultats : seuls les ${MAX} premiers sont affichés. Affinez la recherche (nom, ville, secteur…).</p>` : ''}
+    <table><tr><th>Entreprise</th><th>Adresse</th><th>Contact</th><th></th></tr>${l.map(e => `<tr><td><b>${esc(e.nom)}</b>${e.secteur ? `<br><span class="badge clair">${esc(e.secteur)}</span>` : ''}</td>
     <td>${esc(e.adresse)}${e.lat == null ? '<br><span class="badge" style="background:#b45309">non localisée</span>' : ''}</td><td>${esc(e.tel)}${e.contact ? `<br>${esc(e.contact)}` : ''}${e.email ? `<br>${esc(e.email)}` : ''}</td>
     <td style="white-space:nowrap"><button class="btn mini sec" data-a="editEnt" data-id="${e.id}">Modifier</button> <button class="btn mini danger" data-a="supEnt" data-id="${e.id}">Supprimer</button></td></tr>`).join('')}</table>`;
 }
 I.qEnt = el => { S.qEnt = el.value; $('#tableEnt').innerHTML = tableEnt(); };
+// Import d'un fichier préparé (liste déjà localisée) : ajoute les entreprises absentes de la base.
+A.choisirFichierEnt = () => $('#fichierEnt').click();
+C.fichierEnt = async el => {
+  const f = el.files && el.files[0]; el.value = '';
+  if (!f) return;
+  let doc;
+  try { doc = JSON.parse(await f.text()); } catch { throw new Error('Ce fichier n’est pas un fichier d’import valide (.json).'); }
+  const liste = Array.isArray(doc) ? doc : doc && doc.entreprises;
+  if (!Array.isArray(liste) || !liste.length || !liste.every(e => e && typeof e.nom === 'string' && e.nom.trim())) throw new Error('Fichier non reconnu : il doit contenir une liste d’entreprises.');
+  const champs = ['id', 'nom', 'secteur', 'activite', 'adresse', 'ville', 'lat', 'lon', 'precision', 'tel', 'email', 'web', 'contact', 'notes'];
+  const propre = e => { const o = {}; for (const k of champs) if (e[k] !== undefined && e[k] !== '') o[k] = k === 'lat' || k === 'lon' ? (e[k] == null ? null : +e[k]) : String(e[k]).slice(0, 300); o.id = o.id || uid(); if (o.lat === undefined) { o.lat = null; o.lon = null; } return o; };
+  const cle = e => `${e.nom}|${e.adresse || ''}`.toLowerCase().replace(/\s+/g, ' ');
+  if (!confirm(`Importer ${liste.length} entreprise(s) depuis « ${f.name} » ? Celles déjà présentes dans la base seront ignorées.`)) return;
+  let ajoutees = 0;
+  await mutCommun('entreprises', l => {
+    const ids = new Set(l.map(e => e.id)), cles = new Set(l.map(cle));
+    for (const e of liste.map(propre)) { if (ids.has(e.id) || cles.has(cle(e))) continue; l.push(e); ids.add(e.id); cles.add(cle(e)); ajoutees++; }
+  });
+  render(); toast(`${ajoutees} entreprise(s) ajoutée(s), ${liste.length - ajoutees} déjà présente(s)`);
+};
 A.editEnt = el => {
   const e = S.entreprises.find(x => x.id === el.dataset.id) || { id: '', nom: '', secteur: '', adresse: '', lat: null, lon: null, tel: '', email: '', contact: '', notes: '' };
   modal(`<h2>${e.id ? 'Modifier' : 'Ajouter'} une entreprise</h2><div class="deux"><label>Nom<input id="e_nom" value="${esc(e.nom)}"></label><label>Secteur d’activité<input id="e_secteur" value="${esc(e.secteur)}"></label></div>
@@ -280,7 +303,9 @@ A.editEnt = el => {
     <label>Notes<textarea id="e_notes" rows="2">${esc(e.notes)}</textarea></label><button class="btn" data-a="sauverEnt" data-id="${e.id}">Enregistrer</button>`);
 };
 A.sauverEnt = async el => {
-  const n = { id: el.dataset.id || uid(), nom: val('e_nom'), secteur: val('e_secteur'), ...lireGeo('e'), tel: val('e_tel'), email: val('e_email'), contact: val('e_contact'), notes: val('e_notes') };
+  const ancien = S.entreprises.find(x => x.id === el.dataset.id) || {};   // garde les champs non affichés (activité, site web…)
+  const n = { ...ancien, id: el.dataset.id || uid(), nom: val('e_nom'), secteur: val('e_secteur'), ...lireGeo('e'), tel: val('e_tel'), email: val('e_email'), contact: val('e_contact'), notes: val('e_notes') };
+  if (ancien.adresse !== n.adresse || ancien.lat !== n.lat) n.precision = n.lat != null ? 'adresse' : '';
   if (!n.nom) throw new Error('Indiquez le nom de l’entreprise.');
   await assurerGeo(n);
   await mutCommun('entreprises', l => { const i = l.findIndex(x => x.id === n.id); if (i >= 0) l[i] = n; else l.push(n); });

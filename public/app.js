@@ -190,7 +190,9 @@ function render() {
   const app = $('#app');
   if (!S.user) { app.innerHTML = vueAuth(); return; }
   const prof = S.user.role === 'prof';
+  if (carte) { carte.remove(); carte = null; }
   app.innerHTML = entete(prof) + `<main>${prof ? vueProf() : vueEleve()}</main>` + (prof && S.dossier ? vueDossier() : '');
+  if (!prof && S.vue === 'entreprises') afficherCarte();
 }
 function entete(prof) {
   let nav;
@@ -357,19 +359,29 @@ function plusProche(d, e) {
 function suggestions(d) {
   const pris = new Set(d.demandes.liste.map(x => x.entrepriseId)), out = [];
   for (const e of S.entreprises) {
-    if (pris.has(e.id) || e.lat == null) continue;
+    if (pris.has(e.id) || e.lat == null || (S.secteur && e.secteur !== S.secteur)) continue;
     let best = null;
     for (const r of d.profil.residences) { if (r.lat == null) continue; const km = dist(r, e); if (km <= r.rayon && (!best || km < best.km)) best = { km, res: r.label }; }
     if (best) out.push({ e, ...best });
   }
-  return out.sort((a, b) => a.km - b.km);
+  // Adresse précise d'abord (par distance), puis les entreprises situées seulement « au centre de la commune ».
+  const approx = x => x.e.precision === 'commune' ? 1 : 0;
+  return out.sort((a, b) => approx(a) - approx(b) || a.km - b.km);
 }
-function ligneEnt(e, pos, p) {
-  return `<div class="ent ${p ? 'prof' : ''}"><input type="checkbox" class="sel" value="${e.id}" data-km="${pos ? pos.km.toFixed(1) : ''}" aria-label="Sélectionner ${esc(e.nom)}">
+// Lien vers la fiche Google Maps de l'entreprise (aucune clé d'API nécessaire).
+const lienMaps = e => 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(`${e.nom} ${e.adresse || ''}`.trim());
+const lienWeb = u => /^https?:\/\//i.test(u) ? u : 'https://' + u;
+function ligneEnt(e, pos, p, num) {
+  return `<div class="ent ${p ? 'prof' : ''}" data-ent="${e.id}"><input type="checkbox" class="sel" value="${e.id}" data-km="${pos ? pos.km.toFixed(1) : ''}" aria-label="Sélectionner ${esc(e.nom)}">
+    ${num ? `<span class="num ${p ? 'prof' : ''}">${num}</span>` : ''}
     <div class="corps"><b>${esc(e.nom)}</b> ${e.secteur ? `<span class="badge clair">${esc(e.secteur)}</span>` : ''}
-      <div class="petit doux">${esc(e.adresse)}</div><div class="petit">☎ ${esc(e.tel || 'non renseigné')}${e.contact ? ` · Contact : ${esc(e.contact)}` : ''}${e.email ? ` · ${esc(e.email)}` : ''}</div>
+      ${e.activite ? `<div class="petit">${esc(e.activite)}</div>` : ''}
+      <div class="petit doux">${esc(e.adresse)}${e.precision === 'commune' ? ' <span title="Position approximative : centre de la commune">(position approximative)</span>' : ''}</div>
+      <div class="petit">☎ ${esc(e.tel || 'non renseigné')}${e.contact ? ` · Contact : ${esc(e.contact)}` : ''}${e.email ? ` · ${esc(e.email)}` : ''}</div>
+      <div class="petit liens-ent">${e.lat != null ? `<button type="button" class="lien" data-a="voirSurCarte" data-id="${e.id}">🗺️ Voir sur la carte</button>` : ''}
+        <a href="${esc(lienMaps(e))}" target="_blank" rel="noopener">📍 Google Maps</a>${e.web ? ` <a href="${esc(lienWeb(e.web))}" target="_blank" rel="noopener">🌐 Site web</a>` : ''}</div>
       ${p ? `<div class="petit">💡 Proposée par ${esc(p.profNom)}${p.message ? ` : « ${esc(p.message)} »` : ''}</div>` : ''}</div>
-    ${pos ? `<div class="km">${pos.km.toFixed(1)} km<div class="petit doux" style="font-weight:400">de « ${esc(pos.res)} »</div></div>` : ''}</div>`;
+    ${pos ? `<div class="km">${e.precision === 'commune' ? (pos.km < 1 ? 'Dans la commune' : `≈ ${pos.km.toFixed(0)} km`) : `${pos.km.toFixed(1)} km`}<div class="petit doux" style="font-weight:400">de « ${esc(pos.res)} »</div></div>` : ''}</div>`;
 }
 function vueEntreprises() {
   const d = S.el, loc = d.profil.residences.filter(r => r.lat != null);
@@ -378,17 +390,86 @@ function vueEntreprises() {
   if (S.offset >= tout.length) S.offset = 0;
   const page = tout.slice(S.offset, S.offset + nb), pris = new Set(d.demandes.liste.map(x => x.entrepriseId));
   const props = d.prof.propositions.filter(p => !pris.has(p.entrepriseId)).map(p => ({ p, e: S.entreprises.find(e => e.id === p.entrepriseId) })).filter(x => x.e);
-  return `${props.length ? `<section class="carte"><h2>💡 Proposées par mes professeurs</h2>${props.map(x => ligneEnt(x.e, plusProche(d, x.e), x.p)).join('')}</section>` : ''}
+  const secteurs = [...new Set(S.entreprises.map(e => e.secteur).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'fr'));
+  // Points affichés sur la carte : mêmes numéros que dans la liste ; « P1, P2… » pour les propositions des professeurs.
+  S.pointsCarte = [...props.map((x, i) => ({ e: x.e, num: 'P' + (i + 1), type: 'prof' })), ...page.map((x, i) => ({ e: x.e, num: String(i + 1), type: 'sugg' })),
+    ...d.demandes.liste.map(x => ({ e: S.entreprises.find(e => e.id === x.entrepriseId), statut: x.statut, type: 'demande' })).filter(x => x.e && x.e.lat != null)];
+  return `${props.length ? `<section class="carte"><h2>💡 Proposées par mes professeurs</h2>${props.map((x, i) => ligneEnt(x.e, plusProche(d, x.e), x.p, 'P' + (i + 1))).join('')}</section>` : ''}
+  <section class="carte"><h2>🗺️ Carte</h2>
+    <div id="carte" class="carte-map" role="region" aria-label="Carte de mes communes et des entreprises proposées"><p class="doux" style="padding:12px">Chargement de la carte…</p></div>
+    <div class="legende petit"><span><i class="pt maison"></i>Mes communes (cercle = distance possible)</span><span><i class="pt sugg"></i>Entreprises proposées</span>
+      ${props.length ? '<span><i class="pt prof"></i>Proposées par un professeur</span>' : ''}${d.demandes.liste.length ? '<span><i class="pt demande"></i>Déjà dans mes appels</span>' : ''}</div></section>
   <section class="carte"><h2>Entreprises proches de chez moi</h2>
     <p class="doux">Autour de ${loc.map(r => `« ${esc(r.label)} » (${r.rayon} km)`).join(', ')} — ${tout.length} entreprise(s) disponible(s), distances à vol d’oiseau.
       <button class="lien" style="display:inline" data-a="aller" data-v="profil">Modifier mes distances</button></p>
-    <label style="max-width:260px">Nombre de propositions affichées<select data-c="nbSugg">${[5, 6, 7, 8, 9, 10].map(n => `<option ${n === nb ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
-    ${page.length ? page.map(x => ligneEnt(x.e, x)).join('') : '<p>Aucune entreprise de la base ne se trouve dans tes zones. Augmente ta distance de déplacement ou demande conseil à ton professeur.</p>'}
+    <div class="deux">${secteurs.length ? `<label>Secteur d’activité<select data-c="secteur"><option value="">Tous les secteurs</option>${secteurs.map(s => `<option ${s === S.secteur ? 'selected' : ''}>${esc(s)}</option>`).join('')}</select></label>` : ''}
+      <label>Nombre de propositions affichées<select data-c="nbSugg">${[5, 6, 7, 8, 9, 10].map(n => `<option ${n === nb ? 'selected' : ''}>${n}</option>`).join('')}</select></label></div>
+    ${page.length ? page.map((x, i) => ligneEnt(x.e, x, null, String(i + 1))).join('') : `<p>Aucune entreprise${S.secteur ? ' de ce secteur' : ''} de la base ne se trouve dans tes zones. ${S.secteur ? 'Choisis un autre secteur, ou ' : ''}augmente ta distance de déplacement ou demande conseil à ton professeur.</p>`}
     <div class="actions">${page.length || props.length ? '<button class="btn" data-a="ajouterSelection">📞 Ajouter la sélection à mes appels</button>' : ''}
       ${tout.length > nb ? '<button class="btn sec" data-a="autres">🔄 Voir d’autres propositions</button>' : ''}
       <button class="btn sec" data-a="ajoutManuel">➕ J’ai trouvé une entreprise moi-même</button></div></section>`;
 }
 C.nbSugg = async el => { S.el.profil.nbSuggestions = +el.value; S.offset = 0; await sauver('profil'); render(); };
+C.secteur = el => { S.secteur = el.value; S.offset = 0; render(); };
+
+/* --- Carte (Leaflet + OpenStreetMap : gratuit, sans clé ; chargée seulement sur cette page) --- */
+const LEAFLET = { js: 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js', css: 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
+  jsSri: 'sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=', cssSri: 'sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=' };
+let promesseLeaflet = null;
+function chargerLeaflet() {
+  if (window.L) return Promise.resolve(window.L);
+  if (!promesseLeaflet) promesseLeaflet = new Promise((ok, ko) => {
+    const css = document.createElement('link'); Object.assign(css, { rel: 'stylesheet', href: LEAFLET.css, integrity: LEAFLET.cssSri, crossOrigin: '' });
+    const js = document.createElement('script'); Object.assign(js, { src: LEAFLET.js, integrity: LEAFLET.jsSri, crossOrigin: '' });
+    js.onload = () => ok(window.L); js.onerror = () => { promesseLeaflet = null; ko(new Error('Carte indisponible (connexion Internet ?)')); };
+    document.head.append(css, js);
+  });
+  return promesseLeaflet;
+}
+let carte = null, marqueurs = {};
+async function afficherCarte() {
+  const zone = $('#carte'); if (!zone) return;
+  let L;
+  try { L = await chargerLeaflet(); } catch (e) { zone.innerHTML = `<p class="doux" style="padding:12px">${esc(e.message)}</p>`; return; }
+  if (!document.body.contains(zone)) return;   // la page a changé entre-temps
+  if (carte) { carte.remove(); carte = null; }
+  zone.innerHTML = '';
+  carte = L.map(zone, { scrollWheelZoom: false });
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; contributeurs <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' }).addTo(carte);
+  const zoneVue = [];
+  for (const r of S.el.profil.residences.filter(r => r.lat != null)) {
+    L.circle([r.lat, r.lon], { radius: r.rayon * 1000, color: '#2563eb', weight: 2, fillOpacity: .06 }).addTo(carte);
+    L.marker([r.lat, r.lon], { icon: L.divIcon({ className: '', html: '<span class="pin maison">🏠</span>', iconSize: [30, 30], iconAnchor: [15, 15] }), zIndexOffset: -500 })
+      .bindPopup(`<b>${esc(r.label)}</b><br>${esc(r.adresse)}<br>Distance possible : ${r.rayon} km`).addTo(carte);
+    const dLat = r.rayon / 111, dLon = r.rayon / (111 * Math.cos(r.lat * Math.PI / 180));
+    zoneVue.push([r.lat - dLat, r.lon - dLon], [r.lat + dLat, r.lon + dLon]);
+  }
+  marqueurs = {};
+  // Plusieurs entreprises au même point (souvent « centre de la commune ») : on les écarte en spirale pour qu'elles restent visibles.
+  const occupes = { };
+  for (const r of S.el.profil.residences) if (r.lat != null) occupes[r.lat.toFixed(3) + ',' + r.lon.toFixed(3)] = 1;
+  const placer = e => {
+    const k = e.lat.toFixed(3) + ',' + e.lon.toFixed(3), n = occupes[k] = (occupes[k] || 0) + 1;
+    if (n === 1) return [e.lat, e.lon];
+    const a = n * 2.4, d = 0.006 * Math.sqrt(n);   // environ 650 m × √n : visible au zoom de la commune
+    return [e.lat + d * Math.sin(a), e.lon + d * Math.cos(a) / Math.cos(e.lat * Math.PI / 180)];
+  };
+  for (const p of S.pointsCarte || []) {
+    const e = p.e, pos = plusProche(S.el, e);
+    const couleur = p.type === 'demande' ? (STATUTS[p.statut] || STATUTS.a_appeler)[1] : null;
+    const html = p.type === 'demande' ? `<span class="pin demande" style="background:${couleur}">✓</span>` : `<span class="pin ${p.type}${e.precision === 'commune' ? ' approx' : ''}">${esc(p.num)}</span>`;
+    marqueurs[e.id] = L.marker(placer(e), { icon: L.divIcon({ className: '', html, iconSize: [28, 28], iconAnchor: [14, 14] }), zIndexOffset: p.type === 'demande' ? 0 : 500 })
+      .bindPopup(`<b>${esc(e.nom)}</b>${e.secteur ? `<br><i>${esc(e.secteur)}</i>` : ''}<br>${esc(e.adresse)}${e.precision === 'commune' ? '<br><i>Position approximative (centre de la commune)</i>' : ''}${pos ? `<br>${e.precision === 'commune' ? '≈ ' : ''}${pos.km.toFixed(1)} km de « ${esc(pos.res)} »` : ''}
+        ${e.tel ? `<br>☎ <a href="tel:${esc(e.tel.replace(/[^\d+]/g, ''))}">${esc(e.tel)}</a>` : ''}${p.type === 'demande' ? `<br>Dans mes appels : ${(STATUTS[p.statut] || STATUTS.a_appeler)[0]}` : ''}
+        <br><a href="${esc(lienMaps(e))}" target="_blank" rel="noopener">📍 Ouvrir dans Google Maps</a>`).addTo(carte);
+  }
+  if (zoneVue.length) carte.fitBounds(zoneVue, { padding: [10, 10] }); else carte.setView([49.6175, 0.7536], 11);
+}
+A.voirSurCarte = el => {
+  const m = marqueurs[el.dataset.id]; if (!carte || !m) return;
+  $('#carte').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  carte.setView(m.getLatLng(), Math.max(carte.getZoom(), 14)); m.openPopup();
+};
 A.autres = () => { S.offset += S.el.profil.nbSuggestions || 8; render(); };
 const nouvelleDemande = (e, km) => ({
   id: uid(), entrepriseId: e.id || null, nom: e.nom, secteur: e.secteur || '', adresse: e.adresse || '', tel: e.tel || '', email: e.email || '', contact: e.contact || '',
