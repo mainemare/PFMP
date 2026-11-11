@@ -37,7 +37,7 @@ function vueProf() {
 function vueTableau() {
   const u = urgences(), par = NIV.map((_, n) => S.eleves.filter(e => niveau(e.d) === n).length), f = S.f;
   return `${u.length ? `<div class="alerte urgent" role="alert">🚨 <b>Plan d’urgence à déclencher</b> : ${u.length} élève(s) à 10 jours ou moins du stage sans convention signée. <button class="btn mini" data-a="aller" data-v="alertes">Voir les alertes</button></div>` : ''}
-  <div class="stats">${NIV.map((v, n) => `<div class="stat" style="--c:${v.c}"><b>${par[n]}</b><span>${n} · ${v.l}</span></div>`).join('')}</div>
+  <div class="stats">${NIV.map((v, n) => `<div class="stat" style="--c:${v.c}"><b>${par[n]}</b><span>${n} · ${v.l}${n === 2 && par[n] ? `<br>dont ${S.eleves.filter(e => tresActive(e.d)).length} très active(s)` : ''}</span></div>`).join('')}</div>
   <section class="carte filtres">
     <label>Rechercher un élève<input data-i="filtre" data-k="q" value="${esc(f.q)}" placeholder="Nom ou prénom"></label>
     <label>Classe<select data-c="filtre" data-k="classe"><option value="">Toutes</option>${S.classes.map(c => `<option value="${c.id}" ${f.classe === c.id ? 'selected' : ''}>${esc(c.nom)}</option>`).join('')}</select></label>
@@ -65,7 +65,7 @@ function carteEleve(e) {
   const d = e.d, n = niveau(d), dt = datesEleve(d), dern = d.journal.evenements[d.journal.evenements.length - 1];
   const relire = ['cv', 'lettre', 'memento'].filter(t => d[t].aRelire).length;
   return `<article class="eleve" style="--c:${NIV[n].c}" data-a="ouvrir" data-id="${e.id}" tabindex="0" role="button" aria-label="Ouvrir le dossier de ${esc(nomEleve(e))}">
-    <h3>${esc(nomEleve(e))}</h3>${barre(n, true)}
+    <h3>${esc(nomEleve(e))}</h3>${barre(n, true, d)}
     <div class="infos">${d.demandes.liste.length} entreprise(s) suivie(s)<br>${dern ? `Dernière activité : ${fmt(dern.date)}` : 'Aucune activité'}</div>
     <div class="tags">${enUrgence(d) ? `<span class="badge urg">🚨 URGENCE${dt ? ` J${jours(dt.debut) > 0 ? '-' + jours(dt.debut) : ''}` : ''}</span>` : ''}
       ${d.prof.urgence ? `<span class="badge" style="background:#0d9488">Pris en main</span>` : ''}
@@ -88,7 +88,7 @@ function vueDossier() {
   const corps = { synthese: dosSynthese, suivi: dosSuivi, cv: () => dosDoc(e, 'cv'), lettre: () => dosDoc(e, 'lettre'), memento: () => dosDoc(e, 'memento'), conseils: dosConseils, activite: dosActivite }[S.onglet](e);
   return `<div class="overlay" data-a="fond" data-dossier="1"><div class="fenetre large" role="dialog" aria-modal="true"><button class="fermer" data-a="fermerDossier" aria-label="Fermer">✕</button>
     <div class="dossier-tete" style="--c:${NIV[n].c}"><h2>${esc(nomEleve(e))} <span class="badge" style="background:${esc(cl ? cl.couleur : '#64748b')}">${esc(cl ? cl.nom : 'Sans classe')}</span>
-      ${enUrgence(d) ? '<span class="badge urg">🚨 PLAN D’URGENCE</span>' : ''}</h2>${barre(n)}
+      ${enUrgence(d) ? '<span class="badge urg">🚨 PLAN D’URGENCE</span>' : ''}</h2>${barre(n, false, d)}
       <p class="petit" style="margin:8px 0 0">${dt ? `📅 Stage du ${fmt(dt.debut)} au ${fmt(dt.fin)}${jours(dt.debut) > 0 ? ` · J-${jours(dt.debut)}` : ''}${dt.derog ? ` · <b>dates dérogatoires</b>${dt.motif ? ` (${esc(dt.motif)})` : ''}` : ''}` : 'Dates de stage non fixées'}</p></div>
     <div class="onglets">${onglets.map(([k, l]) => `<button data-a="onglet" data-o="${k}" class="${S.onglet === k ? 'actif' : ''}">${l}${d[k] && d[k].aRelire ? ' 🟣' : ''}</button>`).join('')}</div>${corps}</div></div>`;
 }
@@ -190,7 +190,7 @@ function vueAlertes() {
   return `<section class="carte"><h2>🚨 Plan d’urgence (${u.length})</h2><p class="doux">Élèves à 10 jours ou moins du début du stage sans convention signée : le professeur référent prend le dossier en main.</p>
     ${u.length ? `<div class="table-scroll"><table><tr><th>Élève</th><th>Échéance</th><th>Avancement</th><th>Référent</th><th>Prise en main</th><th></th></tr>${u.map(e => { const d = e.d, cl = classeDe(d), j = jours(datesEleve(d).debut), moi = cl && cl.referentId === S.user.id;
       return `<tr><td><b>${esc(nomEleve(e))}</b><br><span class="petit doux">${esc(cl ? cl.nom : '')}</span></td><td><b style="color:#dc2626">${j > 0 ? 'J-' + j : 'Stage commencé'}</b><br><span class="petit doux">${fmt(datesEleve(d).debut)}</span></td>
-        <td style="min-width:170px">${barre(niveau(d), true)}</td><td>${moi ? '<span class="badge" style="background:#dc2626">Vous</span>' : esc(cl && nomProf(cl.referentId) || 'Non désigné')}</td>
+        <td style="min-width:170px">${barre(niveau(d), true, d)}</td><td>${moi ? '<span class="badge" style="background:#dc2626">Vous</span>' : esc(cl && nomProf(cl.referentId) || 'Non désigné')}</td>
         <td>${d.prof.urgence ? `✅ ${esc(d.prof.urgence.par)}<br><span class="petit doux">${fmt(d.prof.urgence.date)}</span>` : '<b>À prendre en main</b>'}</td><td>${bouton(e, 'synthese')}</td></tr>`; }).join('')}</table></div>` : '<p>✅ Aucun élève en situation d’urgence.</p>'}</section>
   <section class="carte"><h2>🟣 Documents à relire (${relire.length})</h2>
     ${relire.length ? relire.map(({ e, t }) => `<p><b>${esc(nomEleve(e))}</b> — ${TITRES[t]} ${e.d[t].deposeLe ? 'déposé sur l’ENT' : 'modifié'} le ${fmt(e.d[t].deposeLe || e.d[t].majLe)} ${bouton(e, t)}</p>`).join('') : '<p class="doux">Rien à relire.</p>'}</section>

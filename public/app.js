@@ -107,12 +107,16 @@ function dist(a, b) {
   const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLon / 2) ** 2;
   return 2 * R * Math.asin(Math.sqrt(h));
 }
+// Seuils de la recherche : « active » à partir de 10 entreprises contactées, « très active » à partir de 20.
+const SEUIL_ACTIVE = 10, SEUIL_TRES_ACTIVE = 20;
+const nbContactees = d => d.demandes.liste.filter(x => x.statut !== 'a_appeler').length;
 function niveauAuto(d) {
   const l = d.demandes.liste, a = s => l.some(x => x.statut === s);
   if (a('convention')) return 5; if (a('protocole')) return 4; if (a('rdv')) return 3;
-  if (l.filter(x => x.statut !== 'a_appeler').length >= 3) return 2;
+  if (nbContactees(d) >= SEUIL_ACTIVE) return 2;
   return l.length ? 1 : 0;
 }
+const tresActive = d => niveau(d) === 2 && nbContactees(d) >= SEUIL_TRES_ACTIVE;
 const niveau = d => d.prof.niveauForce != null ? d.prof.niveauForce : niveauAuto(d);
 function periodeCourante(cl) {
   if (!cl || !cl.periodes) return null;
@@ -128,9 +132,19 @@ function enUrgence(d) {
   const dt = datesEleve(d);
   return !!dt && jours(dt.debut) <= 10 && dt.fin >= today() && niveau(d) < 5;
 }
-function barre(n, compact) {
-  const c = NIV[n].c;
-  return `<div class="barre${compact ? ' compact' : ''}" role="img" aria-label="Niveau ${n} sur 5 : ${NIV[n].l}"><div class="segs">${[1, 2, 3, 4, 5].map(i => `<i style="${i <= n ? `background:${c}` : ''}"></i>`).join('')}</div><span style="color:${c}"><b>${n}</b> · ${NIV[n].l}</span></div>`;
+// d (facultatif) : dossier de l'élève, pour afficher « Recherche très active » au niveau 2.
+function barre(n, compact, d) {
+  const c = NIV[n].c, tres = d && n === 2 && nbContactees(d) >= SEUIL_TRES_ACTIVE, l = tres ? '🔥 Recherche très active' : NIV[n].l;
+  return `<div class="barre${compact ? ' compact' : ''}${tres ? ' tres' : ''}" role="img" aria-label="Niveau ${n} sur 5 : ${l}"><div class="segs">${[1, 2, 3, 4, 5].map(i => `<i style="${i <= n ? `background:${c}` : ''}"></i>`).join('')}</div><span style="color:${c}"><b>${n}</b> · ${l}</span></div>`;
+}
+// Texte d'encouragement selon le nombre d'entreprises contactées.
+function progressionRecherche(d) {
+  const k = nbContactees(d);
+  if (niveau(d) > 2 || d.prof.niveauForce != null) return '';   // niveau fixé par un professeur : pas de message contradictoire
+  const s = k > 1 ? 's' : '';
+  if (k >= SEUIL_TRES_ACTIVE) return `📞 <b>${k}</b> entreprise${s} contactée${s} : bravo, ta recherche est très active !`;
+  if (k >= SEUIL_ACTIVE) return `📞 <b>${k}</b> entreprise${s} contactée${s} : encore <b>${SEUIL_TRES_ACTIVE - k}</b> pour une recherche très active.`;
+  return `📞 <b>${k}</b> entreprise${s} contactée${s} : encore <b>${SEUIL_ACTIVE - k}</b> pour une recherche active.`;
 }
 
 /* ---------- Localisation des adresses (Base Adresse Nationale) ---------- */
@@ -285,7 +299,7 @@ function rappelQuotidien() {
   let html = '';
   if (S.user.role === 'eleve') {
     const al = alerteEleve(S.el);
-    if (['attention', 'alerte2', 'urgent'].includes(al.c)) html = `<h2>Rappel : ton stage approche</h2><div class="alerte ${al.c}">${al.h}</div>${barre(niveau(S.el))}`;
+    if (['attention', 'alerte2', 'urgent'].includes(al.c)) html = `<h2>Rappel : ton stage approche</h2><div class="alerte ${al.c}">${al.h}</div>${barre(niveau(S.el), false, S.el)}`;
   } else {
     const u = urgences();
     if (u.length) {
@@ -303,9 +317,9 @@ function vueAccueil() {
   const todo = [[d.profil.residences.some(r => r.lat != null), 'Compléter mon profil et mes communes de résidence', 'profil'], [!!d.memento.accroche.trim(), 'Préparer mon memento d’appel', 'memento'],
     [!!d.cv.deposeLe, 'Déposer mon CV sur l’ENT', 'cv'], [!!d.lettre.deposeLe, 'Déposer ma lettre de motivation sur l’ENT', 'lettre'], [d.demandes.liste.length > 0, 'Sélectionner des entreprises à appeler', 'entreprises']];
   return `<div class="alerte ${al.c}" role="alert">${al.h}</div>
-  <section class="carte"><h2>Où j’en suis</h2>${barre(n)}
+  <section class="carte"><h2>Où j’en suis</h2>${barre(n, false, d)}${progressionRecherche(d) ? `<p style="margin:10px 0 0">${progressionRecherche(d)}</p>` : ''}
     <div class="etapes">${NIV.map((v, i) => `<div class="${i <= n ? 'fait' : ''}" style="${i <= n ? `background:${NIV[n].c}` : ''}"><b>${i}</b>${v.l}</div>`).join('')}</div>
-    <p class="doux petit" style="margin-top:10px">Le niveau avance tout seul : 1 dès qu’une entreprise est sélectionnée, 2 à partir de 3 entreprises contactées, puis selon le statut de tes demandes (rendez-vous, protocole, convention).</p></section>
+    <p class="doux petit" style="margin-top:10px">Le niveau avance tout seul : 1 dès qu’une entreprise est sélectionnée, 2 (recherche active) à partir de ${SEUIL_ACTIVE} entreprises contactées — très active à partir de ${SEUIL_TRES_ACTIVE} —, puis selon le statut de tes demandes (rendez-vous, protocole, convention).</p></section>
   <div class="grille">
     <section class="carte"><h2>Mes prochaines actions</h2>
       ${rel.length ? `<p>📞 <b>${rel.length} relance(s) à faire :</b> ${rel.map(x => esc(x.nom)).join(', ')} <button class="btn mini" data-a="aller" data-v="suivi">Voir</button></p>` : ''}
@@ -502,7 +516,7 @@ function carteDemande(x, lecture) {
 }
 function vueSuivi() {
   const l = S.el.demandes.liste;
-  return `<section class="carte"><h2>Ma console d’appels</h2>${barre(niveau(S.el))}
+  return `<section class="carte"><h2>Ma console d’appels</h2>${barre(niveau(S.el), false, S.el)}${progressionRecherche(S.el) ? `<p class="petit" style="margin:8px 0 0">${progressionRecherche(S.el)}</p>` : ''}
     <p class="doux" style="margin-top:8px">Ouvre la « fiche d’appel » avant de téléphoner : ton memento s’affiche à côté, et tu notes qui tu as eu, la réponse et la suite à donner.</p>
     <div class="actions"><button class="btn sec" data-a="aller" data-v="entreprises">🏢 Choisir d’autres entreprises</button><button class="btn sec" data-a="ajoutManuel">➕ Ajouter une entreprise</button></div></section>
   ${l.length ? [...l].reverse().map(x => carteDemande(x)).join('') : '<section class="carte"><p>Tu n’as encore sélectionné aucune entreprise.</p></section>'}`;
