@@ -192,3 +192,10 @@ header.top { padding-top: max(12px, env(safe-area-inset-top)); position: sticky;
   #print h1 { font-size: 22pt; margin-bottom: 2pt; } #print h2 { font-size: 12pt; text-transform: uppercase; border-bottom: 1px solid #000; margin: 14pt 0 5pt; }
   #print p { white-space: pre-wrap; }
 }
+
+/* Carte professeur */
+.carte-map.grande { height: 560px; }
+@media (max-width: 640px) { .carte-map.grande { height: 420px; } }
+.popup-eleves { margin-top: 6px; border-top: 1px solid #e2e6ef; padding-top: 6px; max-height: 180px; overflow-y: auto; }
+.popup-eleves div { margin: 3px 0; }
+.popup-eleves .badge { font-size: .7rem; padding: 1px 6px; }

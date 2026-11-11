@@ -5,7 +5,7 @@ const S = {
   token: localStorage.getItem('stages_token') || '', user: null, vue: '', auth: 'connexion', pubClasses: [],
   classes: [], entreprises: [], profs: [],
   el: null, offset: 0,                                   // élève
-  eleves: [], dossier: null, onglet: 'synthese', qEnt: '', f: { classe: '', niveau: '', q: '', urg: false }, // prof
+  eleves: [], dossier: null, onglet: 'synthese', qEnt: '', secteurBase: '', fc: { secteur: '', classe: '', statut: '', toutes: false }, f: { classe: '', niveau: '', q: '', urg: false }, // prof
 };
 const A = {}, C = {}, I = {};   // actions (clic), changements, saisies
 
@@ -205,14 +205,16 @@ function render() {
   if (!S.user) { app.innerHTML = vueAuth(); return; }
   const prof = S.user.role === 'prof';
   if (carte) { carte.remove(); carte = null; }
+  if (typeof fermerCarteProf === 'function') fermerCarteProf();
   app.innerHTML = entete(prof) + `<main>${prof ? vueProf() : vueEleve()}</main>` + (prof && S.dossier ? vueDossier() : '');
   if (!prof && S.vue === 'entreprises') afficherCarte();
+  if (prof && S.vue === 'carte' && !S.dossier) afficherCarteProf();
 }
 function entete(prof) {
   let nav;
   if (prof) {
     const nu = urgences().filter(e => !e.d.prof.urgence).length;
-    nav = [['tableau', '📊 Tableau de bord'], ['alertes', '🔔 Alertes', nu], ['classes', '📅 Classes et dates'], ['entreprises', '🏢 Entreprises']];
+    nav = [['tableau', '📊 Tableau de bord'], ['alertes', '🔔 Alertes', nu], ['carte', '🗺️ Carte'], ['classes', '📅 Classes et dates'], ['entreprises', '🏢 Entreprises']];
   } else {
     const d = S.el, nl = d.prof.conseils.filter(c => !d.etat.conseilsLus.includes(c.id)).length;
     nav = [['accueil', '🏠 Accueil', nl], ['profil', '👤 Mon profil'], ['entreprises', '🏢 Entreprises'], ['suivi', '📞 Mes appels', relancesDues(d).length],
@@ -447,6 +449,7 @@ async function afficherCarte() {
   try { L = await chargerLeaflet(); } catch (e) { zone.innerHTML = `<p class="doux" style="padding:12px">${esc(e.message)}</p>`; return; }
   if (!document.body.contains(zone)) return;   // la page a changé entre-temps
   if (carte) { carte.remove(); carte = null; }
+  if (typeof fermerCarteProf === 'function') fermerCarteProf();
   zone.innerHTML = '';
   carte = L.map(zone, { scrollWheelZoom: false });
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; contributeurs <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' }).addTo(carte);

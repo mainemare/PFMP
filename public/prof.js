@@ -28,6 +28,7 @@ function vueProf() {
   switch (S.vue) {
     case 'classes': return vueClasses();
     case 'entreprises': return vueBase();
+    case 'carte': return vueCarteProf();
     case 'alertes': return vueAlertes();
     default: return vueTableau();
   }
@@ -148,7 +149,7 @@ A.corriger = async el => {
   await putDoc(`eleve/${e.id}/${t}`, doc); render(); toast('Correction enregistrée');
 };
 function dosConseils(e) {
-  const d = e.d, ents = [...S.entreprises].sort((a, b) => a.nom.localeCompare(b.nom, 'fr'));
+  const d = e.d;
   return `<div class="grille"><div><h3>Conseils donnés</h3>
     ${d.prof.conseils.length ? [...d.prof.conseils].reverse().map(c => `<div class="conseil"><div class="petit doux">${esc(c.profNom)} · ${fmtDT(c.date)} · ${d.etat.conseilsLus.includes(c.id) ? 'lu' : 'non lu'}
       <button class="lien" style="display:inline" data-a="supConseil" data-id="${c.id}">supprimer</button></div>${esc(c.texte)}</div>`).join('') : '<p class="doux">Aucun conseil.</p>'}
@@ -156,7 +157,8 @@ function dosConseils(e) {
   </div><div><h3>Entreprises proposées à l’élève</h3>
     ${d.prof.propositions.length ? d.prof.propositions.map(p => { const en = S.entreprises.find(x => x.id === p.entrepriseId); const pris = d.demandes.liste.some(x => x.entrepriseId === p.entrepriseId);
       return `<p>🏢 <b>${esc(en ? en.nom : 'Entreprise supprimée')}</b> <span class="badge clair">${pris ? 'ajoutée à ses appels' : 'pas encore retenue'}</span><br><span class="petit doux">${esc(p.profNom)} · ${fmt(p.date)}${p.message ? ` · « ${esc(p.message)} »` : ''}</span></p>`; }).join('') : '<p class="doux">Aucune proposition.</p>'}
-    <label>Proposer une entreprise de la base<select id="k_ent"><option value="">— Choisir —</option>${ents.map(x => `<option value="${x.id}">${esc(x.nom)}${x.secteur ? ` (${esc(x.secteur)})` : ''}</option>`).join('')}</select></label>
+    <div class="deux"><label>Secteur<select id="k_secteur" data-c="secteurProposer">${optionsSecteur('')}</select></label>
+      <label>Proposer une entreprise de la base <span class="doux petit">(les plus proches de l’élève d’abord)</span><select id="k_ent">${optionsProposer(e)}</select></label></div>
     <details style="margin-bottom:12px"><summary>…ou saisir une nouvelle adresse d’entreprise</summary>
       <label style="margin-top:8px">Nom<input id="kn_nom"></label><div style="font-weight:600;font-size:.88rem">Adresse</div>${champGeo('kn', '', null, null)}
       <div class="deux" style="margin-top:10px"><label>Téléphone<input id="kn_tel"></label><label>Contact<input id="kn_contact"></label></div></details>
@@ -261,12 +263,13 @@ function vueBase() {
       <button class="btn sec" data-a="choisirFichierEnt">📂 Importer un fichier préparé (.json)</button><input type="file" id="fichierEnt" accept=".json,application/json" hidden data-c="fichierEnt">
       ${sansGeo ? `<button class="btn sec" data-a="geoManquantes">📍 Localiser les ${sansGeo} adresse(s) non localisée(s)</button>` : ''}
       ${S.entreprises.length ? '' : '<button class="btn sec" data-a="demo">🧪 Charger des données de démonstration</button>'}</div>
-    <label style="margin-top:12px">Rechercher<input data-i="qEnt" value="${esc(S.qEnt)}" placeholder="Nom, secteur, ville…"></label>
+    <div class="deux" style="margin-top:12px"><label>Rechercher<input data-i="qEnt" value="${esc(S.qEnt)}" placeholder="Nom, activité, ville…"></label>
+      <label>Secteur d’activité<select data-c="secteurBase">${optionsSecteur(S.secteurBase)}</select></label></div>
     <div class="table-scroll" id="tableEnt">${tableEnt()}</div></section>`;
 }
 function tableEnt() {
   const q = S.qEnt.trim().toLowerCase();
-  const tous = S.entreprises.filter(e => !q || `${e.nom} ${e.secteur} ${e.activite || ''} ${e.adresse} ${e.contact}`.toLowerCase().includes(q)).sort((a, b) => a.nom.localeCompare(b.nom, 'fr'));
+  const tous = S.entreprises.filter(e => (!S.secteurBase || e.secteur === S.secteurBase) && (!q || `${e.nom} ${e.secteur} ${e.activite || ''} ${e.adresse} ${e.contact}`.toLowerCase().includes(q))).sort((a, b) => a.nom.localeCompare(b.nom, 'fr'));
   if (!tous.length) return '<p class="doux">Aucune entreprise.</p>';
   const MAX = 200, l = tous.slice(0, MAX);   // au-delà, le tableau devient trop lourd à afficher
   return `${tous.length > MAX ? `<p class="doux petit">${tous.length} résultats : seuls les ${MAX} premiers sont affichés. Affinez la recherche (nom, ville, secteur…).</p>` : ''}
@@ -275,6 +278,16 @@ function tableEnt() {
     <td style="white-space:nowrap"><button class="btn mini sec" data-a="editEnt" data-id="${e.id}">Modifier</button> <button class="btn mini danger" data-a="supEnt" data-id="${e.id}">Supprimer</button></td></tr>`).join('')}</table>`;
 }
 I.qEnt = el => { S.qEnt = el.value; $('#tableEnt').innerHTML = tableEnt(); };
+C.secteurBase = el => { S.secteurBase = el.value; $('#tableEnt').innerHTML = tableEnt(); };
+// Dossier élève : la liste « Proposer une entreprise » se filtre par secteur et se trie par distance de l'élève.
+function optionsProposer(e) {
+  const sect = $('#k_secteur') ? $('#k_secteur').value : '';
+  const l = S.entreprises.filter(x => !sect || x.secteur === sect)
+    .map(x => ({ x, km: (plusProche(e.d, x) || {}).km }))
+    .sort((a, b) => (a.km ?? 1e9) - (b.km ?? 1e9) || a.x.nom.localeCompare(b.x.nom, 'fr')).slice(0, 300);
+  return `<option value="">— Choisir (${l.length}${l.length === 300 ? ' plus proches' : ''}) —</option>${l.map(({ x, km }) => `<option value="${x.id}">${esc(x.nom)}${x.secteur && !sect ? ` (${esc(x.secteur)})` : ''}${km != null ? ` — ${km.toFixed(1)} km` : ''}</option>`).join('')}`;
+}
+C.secteurProposer = () => { $('#k_ent').innerHTML = optionsProposer(eleveOuvert()); };
 // Import d'un fichier préparé (liste déjà localisée) : ajoute les entreprises absentes de la base.
 A.choisirFichierEnt = () => $('#fichierEnt').click();
 C.fichierEnt = async el => {
@@ -351,3 +364,83 @@ A.demo = async () => {
   }
   render(); toast('Données de démonstration chargées (région lyonnaise)');
 };
+
+/* ---------- Carte des entreprises sélectionnées par les élèves ---------- */
+// Avancement d'une demande, du moins au plus abouti : sert à colorer l'entreprise selon la meilleure demande.
+const RANG = { refus: 0, a_appeler: 1, sans_reponse: 2, a_rappeler: 3, attente: 4, rdv: 5, protocole: 6, convention: 7 };
+const secteursBase = () => [...new Set(S.entreprises.map(e => e.secteur).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'fr'));
+const optionsSecteur = actuel => `<option value="">Tous les secteurs</option>${secteursBase().map(s => `<option ${s === actuel ? 'selected' : ''}>${esc(s)}</option>`).join('')}`;
+
+// Regroupe les demandes des élèves par entreprise, selon les filtres choisis.
+function entreprisesSelectionnees() {
+  const f = S.fc, parEnt = new Map(), horsCarte = [];
+  for (const el of S.eleves) {
+    const d = el.d;
+    if (f.classe && d.profil.classeId !== f.classe) continue;
+    for (const x of d.demandes.liste) {
+      if (f.statut && x.statut !== f.statut) continue;
+      const e = x.entrepriseId && S.entreprises.find(b => b.id === x.entrepriseId);
+      const secteur = (e && e.secteur) || x.secteur || '';
+      if (f.secteur && secteur !== f.secteur) continue;
+      if (!e || e.lat == null) { horsCarte.push({ el, x }); continue; }
+      if (!parEnt.has(e.id)) parEnt.set(e.id, { e, eleves: [] });
+      parEnt.get(e.id).eleves.push({ el, x });
+    }
+  }
+  const liste = [...parEnt.values()];
+  for (const g of liste) g.meilleur = g.eleves.reduce((m, v) => (RANG[v.x.statut] ?? 1) > (RANG[m] ?? 1) ? v.x.statut : m, g.eleves[0].x.statut);
+  return { liste, horsCarte };
+}
+
+function vueCarteProf() {
+  const f = S.fc, { liste, horsCarte } = entreprisesSelectionnees();
+  const parStatut = {}; for (const g of liste) for (const v of g.eleves) parStatut[v.x.statut] = (parStatut[v.x.statut] || 0) + 1;
+  const nbDemandes = liste.reduce((n, g) => n + g.eleves.length, 0);
+  return `<section class="carte"><h2>🗺️ Entreprises sélectionnées par les élèves</h2>
+    <div class="filtres">
+      <label>Secteur d’activité<select data-c="filtreCarte" data-k="secteur">${optionsSecteur(f.secteur)}</select></label>
+      <label>Classe<select data-c="filtreCarte" data-k="classe"><option value="">Toutes</option>${S.classes.map(c => `<option value="${c.id}" ${f.classe === c.id ? 'selected' : ''}>${esc(c.nom)}</option>`).join('')}</select></label>
+      <label>Statut de la demande<select data-c="filtreCarte" data-k="statut"><option value="">Tous</option>${Object.entries(STATUTS).map(([k, [l]]) => `<option value="${k}" ${f.statut === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+      <label style="align-self:center"><input type="checkbox" data-c="filtreCarte" data-k="toutes" ${f.toutes ? 'checked' : ''}>Afficher aussi les autres entreprises de la base</label>
+    </div>
+    <p style="margin:12px 0 8px"><b>${liste.length}</b> entreprise(s) sur la carte, pour <b>${nbDemandes}</b> demande(s) d’élèves.
+      ${horsCarte.length ? `<span class="doux petit">${horsCarte.length} demande(s) ne peuvent pas être placées (entreprise ajoutée par l’élève ou adresse non localisée).</span>` : ''}</p>
+    <div id="carteProf" class="carte-map grande" role="region" aria-label="Carte des entreprises sélectionnées par les élèves"><p class="doux" style="padding:12px">Chargement de la carte…</p></div>
+    <div class="legende petit">${Object.entries(STATUTS).filter(([k]) => parStatut[k]).map(([k, [l, c]]) => `<span><i class="pt" style="background:${c}"></i>${l} (${parStatut[k]})</span>`).join('')}
+      ${f.toutes ? '<span><i class="pt" style="background:#94a3b8"></i>Autres entreprises de la base</span>' : ''}
+      <span class="doux">Le chiffre = nombre d’élèves ; la couleur = la demande la plus avancée.</span></div></section>
+  ${horsCarte.length ? `<section class="carte"><h3>Demandes hors carte</h3>${horsCarte.map(({ el, x }) => `<p class="petit">• <b>${esc(x.nom)}</b> — ${esc(nomEleve(el))} · ${(STATUTS[x.statut] || STATUTS.a_appeler)[0]} <button class="lien" style="display:inline" data-a="ouvrir" data-id="${el.id}" data-o="suivi">ouvrir le dossier</button></p>`).join('')}</section>` : ''}`;
+}
+C.filtreCarte = el => { S.fc[el.dataset.k] = el.type === 'checkbox' ? el.checked : el.value; render(); };
+
+let carteProf = null;
+function fermerCarteProf() { if (carteProf) { carteProf.remove(); carteProf = null; } }
+async function afficherCarteProf() {
+  const zone = $('#carteProf'); if (!zone) return;
+  let L;
+  try { L = await chargerLeaflet(); } catch (e) { zone.innerHTML = `<p class="doux" style="padding:12px">${esc(e.message)}</p>`; return; }
+  if (!document.body.contains(zone)) return;
+  fermerCarteProf(); zone.innerHTML = '';
+  carteProf = L.map(zone, { scrollWheelZoom: false, preferCanvas: true });
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; contributeurs <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' }).addTo(carteProf);
+  const { liste } = entreprisesSelectionnees(), points = [], pris = new Set(liste.map(g => g.e.id));
+  if (S.fc.toutes) {   // fond : les autres entreprises de la base (petits points gris)
+    for (const e of S.entreprises) {
+      if (e.lat == null || pris.has(e.id) || (S.fc.secteur && e.secteur !== S.fc.secteur)) continue;
+      L.circleMarker([e.lat, e.lon], { radius: 3, color: '#64748b', weight: 1, fillColor: '#94a3b8', fillOpacity: .7 })
+        .bindPopup(`<b>${esc(e.nom)}</b>${e.secteur ? `<br><i>${esc(e.secteur)}</i>` : ''}<br>${esc(e.adresse)}${e.tel ? `<br>☎ ${esc(e.tel)}` : ''}<br>Aucun élève ne l’a encore sélectionnée.`).addTo(carteProf);
+    }
+  }
+  for (const g of liste) {
+    const e = g.e, [, couleur] = STATUTS[g.meilleur] || STATUTS.a_appeler, n = g.eleves.length;
+    const taille = Math.min(22 + 4 * (n - 1), 40);
+    L.marker([e.lat, e.lon], { icon: L.divIcon({ className: '', html: `<span class="pin" style="background:${couleur};width:${taille}px;height:${taille}px">${n}</span>`, iconSize: [taille, taille], iconAnchor: [taille / 2, taille / 2] }) })
+      .bindPopup(`<b>${esc(e.nom)}</b>${e.secteur ? `<br><i>${esc(e.secteur)}</i>` : ''}<br>${esc(e.adresse)}${e.tel ? `<br>☎ ${esc(e.tel)}` : ''}
+        <div class="popup-eleves">${g.eleves.map(({ el, x }) => { const [l, c] = STATUTS[x.statut] || STATUTS.a_appeler; const cl = classeDe(el.d);
+          return `<div><span class="badge" style="background:${c}">${l}</span> <b>${esc(nomEleve(el))}</b>${cl ? ` <span class="doux">(${esc(cl.nom)})</span>` : ''}
+            <button type="button" class="lien" style="display:inline" data-a="ouvrir" data-id="${el.id}" data-o="suivi">dossier</button></div>`; }).join('')}</div>`, { maxWidth: 320 })
+      .addTo(carteProf);
+    points.push([e.lat, e.lon]);
+  }
+  if (points.length) carteProf.fitBounds(points, { padding: [30, 30], maxZoom: 13 }); else carteProf.setView([49.6175, 0.7536], 10);
+}
