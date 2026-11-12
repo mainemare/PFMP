@@ -57,18 +57,24 @@ function initProtocole(demandeId) {
     tel: (dem && dem.tel) || base.tel || '', siret: '', assureur: '', contrat: '', signataire: '', fonctionSignataire: '', mailSignataire: '',
     lieu: '', domaine: base.activite || base.secteur || '', tuteur: dem && dem.interlocuteur || '', fonctionTuteur: '', telTuteur: '', mailTuteur: '',
   }, sauve.ent || {});
-  PROTO = { demandeId: dem ? dem.id : '', eleve, ent, signElec: sauve.signElec || '', horaires: Object.assign({}, sauve.horaires || {}) };
+  const horaires = Object.assign({}, sauve.horaires || {});
+  // Journée type : reprise du lundi s'il est déjà rempli ; jours cochés par défaut : du lundi au vendredi.
+  const type = Object.fromEntries(['matin_de', 'matin_a', 'apresmidi_de', 'apresmidi_a'].map(k => [k, horaires['lundi_' + k] || '']));
+  const jours = sauve.jours || { lundi: true, mardi: true, mercredi: true, jeudi: true, vendredi: true, samedi: false };
+  PROTO = { demandeId: dem ? dem.id : '', eleve, ent, signElec: sauve.signElec || '', horaires, type, jours };
 }
 function lireFormulaire() {
   for (const [k] of CHAMPS_ELEVE) PROTO.eleve[k] = val('pe_' + k);
   for (const [k] of CHAMPS_ENTREPRISE) PROTO.ent[k] = val('pn_' + k);
   PROTO.signElec = ($('input[name="pn_signElec"]:checked') || {}).value || '';
   for (const [j] of JOURS) for (const p of ['matin', 'apresmidi']) for (const b of ['de', 'a']) PROTO.horaires[`${j}_${p}_${b}`] = val(`ph_${j}_${p}_${b}`);
+  for (const k of ['matin_de', 'matin_a', 'apresmidi_de', 'apresmidi_a']) PROTO.type[k] = val('pt_' + k);
+  for (const c of $$('.pj')) PROTO.jours[c.value] = c.checked;
 }
 async function memoriserPartieEntreprise() {
   const dem = PROTO.demandeId && S.el.demandes.liste.find(x => x.id === PROTO.demandeId);
   if (!dem) return;
-  dem.protocole = { ent: { ...PROTO.ent }, signElec: PROTO.signElec, horaires: { ...PROTO.horaires }, majLe: maintenant() };
+  dem.protocole = { ent: { ...PROTO.ent }, signElec: PROTO.signElec, horaires: { ...PROTO.horaires }, jours: { ...PROTO.jours }, majLe: maintenant() };
   await sauver('demandes');
 }
 
@@ -91,9 +97,15 @@ function vueProtocole() {
       <label><input type="radio" name="pn_signElec" value="non" ${P.signElec === 'non' ? 'checked' : ''}>Non</label>
       <label><input type="radio" name="pn_signElec" value="" ${!P.signElec ? 'checked' : ''}>Ne sait pas encore</label></fieldset>
     <h3 style="margin-top:14px">Horaires du stagiaire</h3>
-    <div class="table-scroll"><table class="horaires"><tr><th></th><th colspan="2">Matin</th><th colspan="2">Après-midi</th></tr>
-      <tr><th></th><th>De</th><th>À</th><th>De</th><th>À</th></tr>
-      ${JOURS.map(([j, l]) => `<tr><th>${l}</th><td>${heure(`ph_${j}_matin_de`)}</td><td>${heure(`ph_${j}_matin_a`)}</td><td>${heure(`ph_${j}_apresmidi_de`)}</td><td>${heure(`ph_${j}_apresmidi_a`)}</td></tr>`).join('')}</table></div>
+    <p class="doux petit">Astuce : saisis les horaires d’une journée type, coche les jours qui ont les mêmes horaires, puis clique sur « Répercuter ». Tu peux ensuite modifier un jour à la main.</p>
+    <div class="table-scroll"><table class="horaires"><tr><th></th><th></th><th colspan="2">Matin</th><th colspan="2">Après-midi</th></tr>
+      <tr><th></th><th class="petit">Mêmes<br>horaires</th><th>De</th><th>À</th><th>De</th><th>À</th></tr>
+      <tr class="type"><th>Journée type</th><td><label class="petit tous"><input type="checkbox" data-c="protoTousJours" ${JOURS.every(([j]) => P.jours[j]) ? 'checked' : ''} aria-label="Cocher tous les jours">tous</label></td>
+        ${['matin_de', 'matin_a', 'apresmidi_de', 'apresmidi_a'].map(k => `<td><input type="time" id="pt_${k}" value="${esc(P.type[k] || '')}" aria-label="Journée type ${k}"></td>`).join('')}</tr>
+      <tr class="type"><td colspan="6"><button type="button" class="btn mini" data-a="protoRepercuter">⬇️ Répercuter sur les jours cochés</button>
+        <button type="button" class="btn mini sec" data-a="protoEffacerJours">Effacer les jours cochés</button></td></tr>
+      ${JOURS.map(([j, l]) => `<tr><th>${l}</th><td class="centre"><input type="checkbox" class="pj" value="${j}" ${P.jours[j] ? 'checked' : ''} aria-label="${l} : mêmes horaires que la journée type"></td>
+        <td>${heure(`ph_${j}_matin_de`)}</td><td>${heure(`ph_${j}_matin_a`)}</td><td>${heure(`ph_${j}_apresmidi_de`)}</td><td>${heure(`ph_${j}_apresmidi_a`)}</td></tr>`).join('')}</table></div>
     <p class="doux petit">Moins de 15 ans : 7 h/jour et 30 h/semaine au maximum. 15 ans et plus : 8 h/jour et 35 h/semaine. Élève mineur : 2 jours de repos consécutifs.</p></section>
   <section class="carte"><div class="actions">
     <button class="btn" data-a="protoApercu">👁️ Aperçu et impression</button>
@@ -192,3 +204,32 @@ A.protoEnvoyer = async () => {
       <button class="btn" data-a="protoTelecharger">⬇️ Télécharger le PDF</button>`);
   }
 };
+
+/* ---------- Horaires : journée type répercutée sur les jours cochés ---------- */
+const CRENEAUX = ['matin_de', 'matin_a', 'apresmidi_de', 'apresmidi_a'];
+const joursCoches = () => $$('.pj:checked').map(c => c.value);
+function signaler(champ) {   // petit éclair jaune sur les champs modifiés
+  champ.classList.add('flash');
+  setTimeout(() => champ.classList.toggle('flash', false), 700);
+}
+A.protoRepercuter = () => {
+  const type = Object.fromEntries(CRENEAUX.map(k => [k, val('pt_' + k)]));
+  if (!CRENEAUX.some(k => type[k])) throw new Error('Saisis d’abord les horaires de la journée type.');
+  const jours = joursCoches();
+  if (!jours.length) throw new Error('Coche au moins un jour.');
+  for (const j of jours) for (const k of CRENEAUX) { const champ = $(`#ph_${j}_${k}`); champ.value = type[k]; signaler(champ); }
+  lireFormulaire();
+  toast(`Horaires répercutés sur ${jours.length} jour(s)`);
+};
+A.protoEffacerJours = () => {
+  const jours = joursCoches();
+  if (!jours.length) throw new Error('Coche au moins un jour.');
+  for (const j of jours) for (const k of CRENEAUX) $(`#ph_${j}_${k}`).value = '';
+  lireFormulaire();
+  toast(`Horaires effacés pour ${jours.length} jour(s)`);
+};
+C.protoTousJours = el => { for (const c of $$('.pj')) c.checked = el.checked; };
+document.addEventListener('change', ev => {   // la case « tous » suit l'état des cases des jours
+  if (!ev.target.classList || !ev.target.classList.contains('pj')) return;
+  const tous = $('[data-c="protoTousJours"]'); if (tous) tous.checked = $$('.pj').every(c => c.checked);
+});

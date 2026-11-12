@@ -207,3 +207,7 @@ fieldset.choix legend { font-weight: 600; font-size: .88rem; padding: 0 6px; }
 fieldset.choix label { font-weight: 400; margin: 0; display: inline-flex; align-items: center; }
 table.horaires { min-width: 520px; } table.horaires th { text-transform: none; font-size: .85rem; color: var(--texte); }
 table.horaires td { padding: 4px 6px; } table.horaires input { margin: 0; padding: 6px; min-width: 96px; }
+table.horaires tr.type th, table.horaires tr.type td { background: #f6f1ff; }
+table.horaires td.centre { text-align: center; } table.horaires input[type=checkbox] { transform: scale(1.3); margin: 0; min-width: 0; }
+table.horaires label.tous { display: inline-flex; gap: 6px; align-items: center; font-weight: 400; margin: 0; }
+input.flash { background: #fff3c4; transition: background .6s; }
