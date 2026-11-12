@@ -55,3 +55,19 @@ Limites
   - Chaque action prend 1 a 2 secondes (temps de reponse de Google Apps Script).
   - Convient pour quelques classes (quelques centaines d'eleves au plus).
   - Les alertes s'affichent dans l'application (pas d'e-mail ni de SMS).
+
+5. ENVOI DES PROTOCOLES D'ACCORD PAR E-MAIL
+  Les eleves remplissent le protocole d'accord du lycee (public/protocole-2026-2027.pdf) dans l'application,
+  l'impriment, et peuvent l'envoyer au professeur referent de leur classe. L'e-mail part de votre compte Google.
+  Mise en place (une fois, et a refaire si Code.gs change) :
+  1. Apps Script : remplacez le contenu de Code.gs par la nouvelle version de google/Code.gs, enregistrez.
+  2. Choisissez la fonction "autoriserEnvoiMail" puis Executer : Google demande l'autorisation d'envoyer des e-mails
+     en votre nom. Acceptez (meme ecran "application non validee" que lors de l'installation).
+  3. Deployer > Gerer les deploiements > (crayon) > Version : Nouvelle version > Deployer. L'adresse /exec ne change pas.
+  4. Chaque professeur referent indique son adresse e-mail dans l'application : Classes et dates > "Reception des
+     protocoles d'accord". Cette adresse n'est jamais montree aux eleves.
+  Donnees : le nom complet, la date de naissance, l'adresse et les telephones saisis par l'eleve ne sont pas
+  enregistres dans le classeur ; ils figurent seulement dans le PDF envoye au referent (et dans vos e-mails envoyes).
+  Limite Google : 100 e-mails par jour pour un compte Gmail gratuit.
+  Nouvelle annee scolaire : remplacez public/protocole-2026-2027.pdf par le nouveau formulaire. Si sa mise en page
+  change, les emplacements des champs (public/protocole.js) devront etre ajustes.

@@ -13,6 +13,11 @@ const SESSION_MS = 12 * 3600 * 1000;
 const ITERATIONS = 300;
 
 /** A lancer une fois depuis l'editeur (bouton Executer) : prepare le classeur et affiche les codes d'inscription. */
+/** A lancer une fois depuis l'editeur apres la mise a jour : autorise le script a envoyer des e-mails (protocoles d'accord). */
+function autoriserEnvoiMail() {
+  Logger.log("Envoi d'e-mails autorise. E-mails encore disponibles aujourd'hui : " + MailApp.getRemainingDailyQuota());
+}
+
 function installer() {
   const c = config();
   table();
@@ -120,12 +125,13 @@ function supprimerDocs(prefixe) {
 }
 const comptes = () => JSON.parse(getDoc('systeme/comptes')) || [];
 const sauverComptes = l => setDoc('systeme/comptes', JSON.stringify(l));
-const userInfo = u => ({ id: u.id, role: u.role, nom: u.nom, prenom: u.prenom, identifiant: u.identifiant, classeId: u.classeId || null });
+// L'adresse e-mail n'existe que pour les professeurs (jamais pour les eleves) et n'est renvoyee qu'au professeur lui-meme.
+const userInfo = u => ({ id: u.id, role: u.role, nom: u.nom, prenom: u.prenom, identifiant: u.identifiant, classeId: u.classeId || null, email: u.role === 'prof' ? (u.email || '') : undefined });
 
 /* ---------- Routes (memes chemins que server.js) ---------- */
 function traiter(req) {
   const m = String(req.m || 'GET'), chemin = String(req.p || ''), b = req.b || {}, route = m + ' ' + chemin;
-  const ecriture = m !== 'GET' && route !== 'POST /api/connexion';
+  const ecriture = m !== 'GET' && route !== 'POST /api/connexion' && route !== 'POST /api/protocole/envoyer';
   let verrou = null;
   if (ecriture) { verrou = LockService.getScriptLock(); verrou.waitLock(20000); }
   try { return router(m, chemin, route, b, req.t); }
@@ -177,6 +183,42 @@ function router(m, chemin, route, b, jeton) {
   const estProf = user.role === 'prof';
 
   if (route === 'GET /api/moi') return ok(userInfo(user));
+
+  // Professeur : adresse e-mail ou il recoit les protocoles d'accord de ses classes (en tant que referent).
+  if (route === 'POST /api/moi/email') {
+    if (!estProf) return ko(403, 'interdit');
+    const email = String(b.email || '').trim().toLowerCase();
+    if (email && !/^[^\s@]{1,64}@[^\s@]{1,190}\.[a-z]{2,}$/.test(email)) return ko(400, 'email_invalide');
+    const l = comptes(), u = l.find(x => x.id === user.id); u.email = email; sauverComptes(l);
+    return ok(userInfo(u));
+  }
+
+  // Eleve : envoi du protocole d'accord (PDF fabrique dans le navigateur) au professeur referent de sa classe.
+  // Le PDF contient des donnees personnelles : il n'est ni enregistre ni journalise ici, seulement transmis par e-mail.
+  if (route === 'POST /api/protocole/envoyer') {
+    if (user.role !== 'eleve') return ko(403, 'interdit');
+    const pdf = String(b.pdf || '');
+    if (!pdf || pdf.length > 4000000 || !/^[A-Za-z0-9+/=]+$/.test(pdf)) return ko(400, 'invalide');
+    const classes = (JSON.parse(getDoc('commun/classes')) || {}).classes || [];
+    const profil = JSON.parse(getDoc('eleve/' + user.id + '/profil')) || {};
+    const cl = classes.find(c => c.id === (profil.classeId || user.classeId));
+    const referent = cl && cl.referentId && comptes().find(u => u.id === cl.referentId && u.role === 'prof');
+    if (!referent) return ko(409, 'pas_de_referent');
+    if (!referent.email) return ko(409, 'referent_sans_email');
+    const fichier = String(b.fichier || 'Protocole.pdf').replace(/[^A-Za-z0-9._-]/g, '_').slice(0, 90);
+    const entreprise = String(b.entreprise || '').slice(0, 120);
+    const eleve = (profil.prenom || user.prenom) + ' ' + (profil.nom || user.nom);
+    try {
+      MailApp.sendEmail({
+        to: referent.email, name: 'Suivi des stages',
+        subject: "Protocole d'accord - " + eleve + (cl ? ' (' + cl.nom + ')' : '') + (entreprise ? ' - ' + entreprise : ''),
+        body: 'Bonjour,\n\n' + eleve + (cl ? ', eleve de ' + cl.nom + ',' : '') + " vous transmet son protocole d'accord" +
+          (entreprise ? ' pour l\'entreprise ' + entreprise : '') + ' (piece jointe).\n\nMessage envoye automatiquement par l\'application Suivi des stages.',
+        attachments: [Utilities.newBlob(Utilities.base64Decode(pdf), 'application/pdf', fichier)],
+      });
+    } catch (err) { console.error('Envoi du protocole impossible : ' + (err && err.message)); return ko(502, 'envoi_impossible'); }
+    return ok({ ok: true, destinataire: referent.prenom + ' ' + referent.nom });
+  }
   if (route === 'POST /api/deconnexion') return ok({ ok: true });
   if (route === 'GET /api/profs') return ok(comptes().filter(u => u.role === 'prof').map(u => ({ id: u.id, nom: u.nom, prenom: u.prenom })));
 

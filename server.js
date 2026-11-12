@@ -39,7 +39,7 @@ const CODE_ELEVE = process.env.CODE_ELEVE || config.codeEleve;
 // ---------- Comptes ----------
 let users = fs.existsSync(USERS_FILE) ? JSON.parse(lire(USERS_FILE)) : [];
 const sauverUsers = () => ecrire(USERS_FILE, JSON.stringify(users));
-const userJson = u => JSON.stringify({ id: u.id, role: u.role, nom: u.nom, prenom: u.prenom, identifiant: u.identifiant, classeId: u.classeId || null });
+const userJson = u => JSON.stringify({ id: u.id, role: u.role, nom: u.nom, prenom: u.prenom, identifiant: u.identifiant, classeId: u.classeId || null, email: u.role === 'prof' ? (u.email || '') : undefined });
 
 // ---------- Sessions : jetons signes, valables 12 h, qui survivent a un redemarrage ----------
 const signer = corps => crypto.createHmac('sha256', config.secret).update(corps).digest('base64url');
@@ -163,6 +163,15 @@ async function traiter(req, res) {
   const estProf = user.role === 'prof';
 
   if (route === 'GET /api/moi') return envoyer(req, res, 200, userJson(user));
+  if (route === 'POST /api/moi/email') {
+    if (!estProf) return erreur(req, res, 403, 'interdit');
+    const email = String((await lireJson(req)).email || '').trim().toLowerCase();
+    if (email && !/^[^\s@]{1,64}@[^\s@]{1,190}\.[a-z]{2,}$/.test(email)) return erreur(req, res, 400, 'email_invalide');
+    user.email = email; sauverUsers();
+    return envoyer(req, res, 200, userJson(user));
+  }
+  // L'envoi d'e-mails n'existe que dans la version Google (google/Code.gs) : l'eleve telecharge alors son PDF.
+  if (route === 'POST /api/protocole/envoyer') return erreur(req, res, 501, 'envoi_indisponible');
   if (route === 'POST /api/deconnexion') return envoyer(req, res, 200, '{"ok":true}');
   if (route === 'GET /api/profs') return envoyer(req, res, 200, JSON.stringify(users.filter(u => u.role === 'prof').map(u => ({ id: u.id, nom: u.nom, prenom: u.prenom }))));
 

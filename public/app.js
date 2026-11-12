@@ -27,7 +27,7 @@ const ERR = {
   identifiant_invalide: 'Identifiant : 3 à 40 caractères (lettres sans accent, chiffres, point, tiret).',
   motdepasse_court: 'Le mot de passe doit contenir au moins 6 caractères.', code_prof: 'Code professeur incorrect.',
   classe_requise: 'Choisis ta classe.', nom_requis: 'Nom et prénom sont obligatoires.', interdit: 'Action non autorisée.',
-  code_eleve: 'Code d’inscription élève incorrect : demande-le à ton professeur.', nom_initiales: 'Pour le nom, indique seulement les 2 premières lettres.', trop_essais: 'Trop de tentatives. Réessaie dans quelques minutes.',
+  code_eleve: 'Code d’inscription élève incorrect : demande-le à ton professeur.', nom_initiales: 'Pour le nom, indique seulement les 2 premières lettres.', referent_sans_email: 'Ton professeur référent n’a pas encore indiqué son adresse e-mail dans l’application.', pas_de_referent: 'Aucun professeur référent n’est désigné pour ta classe.', envoi_impossible: 'L’e-mail n’a pas pu être envoyé (service de messagerie indisponible).', envoi_indisponible: 'L’envoi par e-mail n’est pas disponible avec ce serveur.', email_invalide: 'Adresse e-mail invalide.', trop_gros: 'Fichier trop volumineux.', trop_essais: 'Trop de tentatives. Réessaie dans quelques minutes.',
   non_connecte: 'Session expirée, reconnecte-toi.', introuvable: 'Élément introuvable.',
 };
 const NIV = [
@@ -218,7 +218,7 @@ function entete(prof) {
   } else {
     const d = S.el, nl = d.prof.conseils.filter(c => !d.etat.conseilsLus.includes(c.id)).length;
     nav = [['accueil', '🏠 Accueil', nl], ['profil', '👤 Mon profil'], ['entreprises', '🏢 Entreprises'], ['suivi', '📞 Mes appels', relancesDues(d).length],
-      ['memento', '📝 Memento'], ['cv', '📄 CV'], ['lettre', '✉️ Lettre']];
+      ['memento', '📝 Memento'], ['cv', '📄 CV'], ['lettre', '✉️ Lettre'], ['protocole', '🤝 Protocole']];
   }
   return `<header class="top"><div class="logo">🎓 Suivi des stages${prof ? ' · Console professeur' : ''}</div>
     <nav>${nav.map(([v, l, n]) => `<button data-a="aller" data-v="${v}" class="${S.vue === v ? 'actif' : ''}">${l}${n ? `<span class="pastille">${n}</span>` : ''}</button>`).join('')}</nav>
@@ -277,6 +277,7 @@ function vueEleve() {
     case 'entreprises': return vueEntreprises();
     case 'suivi': return vueSuivi();
     case 'memento': case 'cv': case 'lettre': return vueDoc(S.vue);
+    case 'protocole': return vueProtocole();
     default: return vueAccueil();
   }
 }
@@ -515,7 +516,7 @@ function carteDemande(x, lecture) {
     <dl>${li('Téléphone', x.tel)}${li('Adresse', x.adresse)}${li('Qui j’ai eu', x.interlocuteur)}${li('Réponse', x.reponse)}${li('Suite à donner', x.suite)}
       ${x.dateRelance ? `<dt>Relance prévue</dt><dd>${fmt(x.dateRelance)}${retard ? ' <span class="badge" style="background:#dc2626">à faire</span>' : ''}</dd>` : ''}</dl>
     ${x.appels.length ? `<details class="petit"><summary>Historique (${x.appels.length} appel(s))</summary>${x.appels.map(a => `<div>• ${fmtDT(a.date)} — ${(STATUTS[a.statut] || [''])[0]}${a.interlocuteur ? ` — ${esc(a.interlocuteur)}` : ''}${a.reponse ? ` : ${esc(a.reponse)}` : ''}</div>`).join('')}</details>` : ''}
-    ${lecture ? '' : `<div class="actions"><button class="btn mini" data-a="fiche" data-id="${x.id}">📞 Fiche d’appel</button><button class="btn mini danger" data-a="supDemande" data-id="${x.id}">Retirer</button></div>`}</div>`;
+    ${lecture ? (x.protocoleEnvoyeLe ? `<p class="petit">🤝 Protocole d’accord envoyé le ${fmtDT(x.protocoleEnvoyeLe)}</p>` : '') : `<div class="actions"><button class="btn mini" data-a="fiche" data-id="${x.id}">📞 Fiche d’appel</button><button class="btn mini sec" data-a="protocolePour" data-id="${x.id}">🤝 Protocole d’accord${x.protocoleEnvoyeLe ? " ✓" : ""}</button><button class="btn mini danger" data-a="supDemande" data-id="${x.id}">Retirer</button></div>`}</div>`;
 }
 function vueSuivi() {
   const l = S.el.demandes.liste;

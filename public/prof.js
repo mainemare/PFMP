@@ -204,6 +204,11 @@ function vueAlertes() {
 function vueClasses() {
   return `<section class="carte"><h2>Classes et dates de stage</h2><p class="doux">Chaque classe a une couleur, un professeur référent et une ou plusieurs périodes de stage. Les alertes des élèves et le plan d’urgence (J-10) se calculent sur la prochaine période.</p>
     ${S.codeEleve ? `<div class="alerte info">🔑 Code d’inscription à communiquer aux élèves : <b>${esc(S.codeEleve)}</b></div>` : ''}
+    <div class="carte" style="margin:0 0 14px"><h3>✉️ Réception des protocoles d’accord</h3>
+      <p class="doux petit">Les élèves des classes dont vous êtes le professeur référent peuvent vous envoyer leur protocole d’accord rempli (PDF) à cette adresse. Elle n’est jamais montrée aux élèves.</p>
+      <div class="ligne"><input id="moi_email" type="email" value="${esc(S.user.email || '')}" placeholder="prenom.nom@ac-normandie.fr" aria-label="Votre adresse e-mail">
+        <button class="btn" data-a="sauverEmail">Enregistrer</button></div>
+      ${S.user.email ? '' : '<p class="petit" style="color:#b45309;margin-top:6px">⚠️ Sans adresse, vos élèves ne pourront pas vous envoyer leur protocole : ils devront vous le remettre en main propre ou via l’ENT.</p>'}</div>
     <button class="btn" data-a="nouvelleClasse">➕ Nouvelle classe</button></section>${S.classes.map(carteClasse).join('')}`;
 }
 function carteClasse(cl) {
@@ -444,3 +449,7 @@ async function afficherCarteProf() {
   }
   if (points.length) carteProf.fitBounds(points, { padding: [30, 30], maxZoom: 13 }); else carteProf.setView([49.6175, 0.7536], 10);
 }
+A.sauverEmail = async () => {
+  const u = await api('POST', '/api/moi/email', { email: val('moi_email') });
+  S.user.email = u.email || ''; render(); toast(S.user.email ? 'Adresse enregistrée' : 'Adresse supprimée');
+};
