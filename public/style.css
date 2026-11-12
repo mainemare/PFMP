@@ -220,3 +220,9 @@ code.code-sig { font: 700 1.05rem Consolas, monospace; letter-spacing: .08em; ba
 .pad-signature { display: block; width: 100%; max-width: 560px; height: 200px; border: 2px dashed #9aa3b5; border-radius: 12px; background: #fff; touch-action: none; margin: 6px 0; cursor: crosshair; }
 .apercu-img { display: block; max-width: 100%; max-height: 200px; margin: 8px 0; border: 1px solid var(--trait); border-radius: 8px; }
 .resume-conv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 0 0 12px; } .resume-conv dt { color: var(--doux); } .resume-conv dd { margin: 0; }
+
+/* Heures par jour et par semaine (protocole) */
+table.horaires td.total { font-weight: 700; text-align: center; white-space: nowrap; min-width: 70px; color: var(--prim-f); }
+table.horaires td.total.depasse { color: #b91c1c; background: #fee2e2; }
+.total-semaine { margin: 10px 0 4px; padding: 10px 14px; border-radius: 10px; background: #eef1f8; border-left: 5px solid #94a3b8; }
+.total-semaine.ok { background: #e3f7ea; border-color: #16a34a; } .total-semaine.depasse { background: #fee2e2; border-color: #dc2626; }

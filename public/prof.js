@@ -150,7 +150,7 @@ function blocProtocoleProf(e, x) {
     <p class="petit doux">Soumis le ${fmtDT(p.soumisLe)}${x.protocoleEnvoyeLe ? ' · PDF envoyé par e-mail au référent' : ''}.</p>
     <dl>${li('Adresse', n.adresse)}${li('Téléphone', n.tel)}${li('SIRET', n.siret)}${li('Signataire', [n.signataire, n.fonctionSignataire].filter(Boolean).join(', '))}
       ${li('Tuteur', [n.tuteur, n.fonctionTuteur].filter(Boolean).join(', '))}${li('Domaine', n.domaine)}${li('Lieu si différent', n.lieu)}
-      ${li('Signature électronique', p.signElec === 'oui' ? 'Acceptée' : p.signElec === 'non' ? 'Refusée' : '')}${li('Horaires', horaires)}</dl>
+      ${li('Signature électronique', p.signElec === 'oui' ? 'Acceptée' : p.signElec === 'non' ? 'Refusée' : '')}${li('Horaires', horaires)}${horaires ? li('Total par semaine', fmtHeures(JOURS.reduce((s, [j]) => s + CONV.dureeJour(h, j), 0))) : ''}</dl>
     ${v && !attente ? `<p class="petit">${v.avis === 'favorable' ? '✅ Avis favorable' : '❌ Avis défavorable'} de ${esc(v.par)} le ${fmtDT(v.date)}${v.motif ? ` — « ${esc(v.motif)} »` : ''}</p>` : ''}
     ${estReferentDe(e) ? `<label class="petit" style="margin-top:8px">Motif / commentaire${attente ? '' : ' (pour modifier l’avis)'}<input id="vp_${x.id}" placeholder="Facultatif pour un avis favorable"></label>
       <div class="actions"><button class="btn mini" data-a="validerProtocole" data-id="${x.id}" data-avis="favorable">✅ Avis favorable</button>

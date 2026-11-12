@@ -208,6 +208,7 @@ function render() {
   if (typeof fermerCarteProf === 'function') fermerCarteProf();
   app.innerHTML = entete(prof) + `<main>${prof ? vueProf() : vueEleve()}</main>` + (prof && S.dossier ? vueDossier() : '');
   if (!prof && S.vue === 'entreprises') afficherCarte();
+  if (!prof && S.vue === 'protocole' && typeof majTotaux === 'function') majTotaux();
   if (prof && S.vue === 'carte' && !S.dossier) afficherCarteProf();
 }
 function entete(prof) {

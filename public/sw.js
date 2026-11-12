@@ -1,7 +1,7 @@
 'use strict';
 // Service worker : rend l'application installable et garde une copie des pages pour un démarrage rapide.
 // Les données (/api/...) ne sont jamais mises en cache : elles viennent toujours du serveur.
-const CACHE = 'stages-v9';
+const CACHE = 'stages-v10';
 // Chemins relatifs : fonctionne aussi dans un sous-dossier (GitHub Pages : /PFMP/).
 const PAGES = ['./', 'style.css', 'config.js', 'app.js', 'prof.js', 'protocole.js', 'protocole-2026-2027.pdf', 'convention-core.js', 'convention.js', 'signer.html', 'signer.js', 'manifest.webmanifest', 'icons/icon-192.png'];
 

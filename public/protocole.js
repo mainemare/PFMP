@@ -100,14 +100,15 @@ function vueProtocole() {
       <label><input type="radio" name="pn_signElec" value="" ${!P.signElec ? 'checked' : ''}>Ne sait pas encore</label></fieldset>
     <h3 style="margin-top:14px">Horaires du stagiaire</h3>
     <p class="doux petit">Astuce : saisis les horaires d’une journée type, coche les jours qui ont les mêmes horaires, puis clique sur « Répercuter ». Tu peux ensuite modifier un jour à la main.</p>
-    <div class="table-scroll"><table class="horaires"><tr><th></th><th></th><th colspan="2">Matin</th><th colspan="2">Après-midi</th></tr>
-      <tr><th></th><th class="petit">Mêmes<br>horaires</th><th>De</th><th>À</th><th>De</th><th>À</th></tr>
+    <div class="table-scroll"><table class="horaires"><tr><th></th><th></th><th colspan="2">Matin</th><th colspan="2">Après-midi</th><th>Total</th></tr>
+      <tr><th></th><th class="petit">Mêmes<br>horaires</th><th>De</th><th>À</th><th>De</th><th>À</th><th class="petit">par jour</th></tr>
       <tr class="type"><th>Journée type</th><td><label class="petit tous"><input type="checkbox" data-c="protoTousJours" ${JOURS.every(([j]) => P.jours[j]) ? 'checked' : ''} aria-label="Cocher tous les jours">tous</label></td>
-        ${['matin_de', 'matin_a', 'apresmidi_de', 'apresmidi_a'].map(k => `<td><input type="time" id="pt_${k}" value="${esc(P.type[k] || '')}" aria-label="Journée type ${k}"></td>`).join('')}</tr>
-      <tr class="type"><td colspan="6"><button type="button" class="btn mini" data-a="protoRepercuter">⬇️ Répercuter sur les jours cochés</button>
+        ${['matin_de', 'matin_a', 'apresmidi_de', 'apresmidi_a'].map(k => `<td><input type="time" id="pt_${k}" value="${esc(P.type[k] || '')}" aria-label="Journée type ${k}"></td>`).join('')}<td class="total" id="pt_total"></td></tr>
+      <tr class="type"><td colspan="7"><button type="button" class="btn mini" data-a="protoRepercuter">⬇️ Répercuter sur les jours cochés</button>
         <button type="button" class="btn mini sec" data-a="protoEffacerJours">Effacer les jours cochés</button></td></tr>
       ${JOURS.map(([j, l]) => `<tr><th>${l}</th><td class="centre"><input type="checkbox" class="pj" value="${j}" ${P.jours[j] ? 'checked' : ''} aria-label="${l} : mêmes horaires que la journée type"></td>
-        <td>${heure(`ph_${j}_matin_de`)}</td><td>${heure(`ph_${j}_matin_a`)}</td><td>${heure(`ph_${j}_apresmidi_de`)}</td><td>${heure(`ph_${j}_apresmidi_a`)}</td></tr>`).join('')}</table></div>
+        <td>${heure(`ph_${j}_matin_de`)}</td><td>${heure(`ph_${j}_matin_a`)}</td><td>${heure(`ph_${j}_apresmidi_de`)}</td><td>${heure(`ph_${j}_apresmidi_a`)}</td><td class="total" id="ptot_${j}"></td></tr>`).join('')}</table></div>
+    <div id="totalSemaine" class="total-semaine" role="status" aria-live="polite"></div>
     <p class="doux petit">Moins de 15 ans : 7 h/jour et 30 h/semaine au maximum. 15 ans et plus : 8 h/jour et 35 h/semaine. Élève mineur : 2 jours de repos consécutifs.</p></section>
   <section class="carte"><div class="actions">
     <button class="btn" data-a="protoApercu">👁️ Aperçu et impression</button>
@@ -238,16 +239,55 @@ A.protoRepercuter = () => {
   if (!jours.length) throw new Error('Coche au moins un jour.');
   for (const j of jours) for (const k of CRENEAUX) { const champ = $(`#ph_${j}_${k}`); champ.value = type[k]; signaler(champ); }
   lireFormulaire();
-  toast(`Horaires répercutés sur ${jours.length} jour(s)`);
+  majTotaux(); toast(`Horaires répercutés sur ${jours.length} jour(s)`);
 };
 A.protoEffacerJours = () => {
   const jours = joursCoches();
   if (!jours.length) throw new Error('Coche au moins un jour.');
   for (const j of jours) for (const k of CRENEAUX) $(`#ph_${j}_${k}`).value = '';
   lireFormulaire();
-  toast(`Horaires effacés pour ${jours.length} jour(s)`);
+  majTotaux(); toast(`Horaires effacés pour ${jours.length} jour(s)`);
 };
 C.protoTousJours = el => { for (const c of $$('.pj')) c.checked = el.checked; };
+
+/* ---------- Heures par jour et par semaine, avec les limites légales selon l'âge ---------- */
+const enMinutes = v => { if (!v) return null; const [h, m] = v.split(':').map(Number); return h * 60 + (m || 0); };
+const fmtHeures = m => m ? `${Math.floor(m / 60)} h${m % 60 ? ' ' + String(m % 60).padStart(2, '0') : ''}` : '—';
+function dureeChamps(prefixe) {
+  let t = 0;
+  for (const p of ['matin', 'apresmidi']) {
+    const a = enMinutes(val(`${prefixe}_${p}_de`)), b = enMinutes(val(`${prefixe}_${p}_a`));
+    if (a != null && b != null && b > a) t += b - a;
+  }
+  return t;
+}
+// Moins de 15 ans : 7 h/jour, 30 h/semaine. 15 à 17 ans : 8 h/jour, 35 h/semaine. Majeur : durée légale de 35 h/semaine.
+function limitesAge() {
+  const naissance = val('pe_naissance'), debut = val('pe_du');
+  if (!naissance) return { jour: 8 * 60, semaine: 35 * 60, texte: 'âge inconnu : limites des 15-17 ans appliquées (8 h/jour, 35 h/semaine)' };
+  const n = new Date(naissance + 'T00:00:00'), d = new Date((debut || today()) + 'T00:00:00');
+  let age = d.getFullYear() - n.getFullYear(); if (d < new Date(d.getFullYear(), n.getMonth(), n.getDate())) age--;
+  if (age < 15) return { jour: 7 * 60, semaine: 30 * 60, texte: `${age} ans au début du stage : 7 h/jour et 30 h/semaine au maximum` };
+  if (age < 18) return { jour: 8 * 60, semaine: 35 * 60, texte: `${age} ans au début du stage : 8 h/jour et 35 h/semaine au maximum` };
+  return { jour: 10 * 60, semaine: 35 * 60, texte: `${age} ans : élève majeur, durée légale de 35 h/semaine` };
+}
+function majTotaux() {
+  const zone = $('#totalSemaine'); if (!zone) return;
+  const lim = limitesAge(); let semaine = 0, joursTravailles = 0; const trop = [];
+  const pt = $('#pt_total'); if (pt) pt.textContent = fmtHeures(dureeChamps('pt'));
+  for (const [j, l] of JOURS) {
+    const m = dureeChamps('ph_' + j), c = $('#ptot_' + j); semaine += m; if (m) joursTravailles++;
+    if (c) { c.textContent = fmtHeures(m); c.classList.toggle('depasse', m > lim.jour); }
+    if (m > lim.jour) trop.push(l);
+  }
+  const depasse = semaine > lim.semaine;
+  zone.className = 'total-semaine' + (depasse || trop.length ? ' depasse' : semaine ? ' ok' : '');
+  zone.innerHTML = `<b>Total : ${semaine ? fmtHeures(semaine) : "0 h"} par semaine</b>${joursTravailles ? ` sur ${joursTravailles} jour${joursTravailles > 1 ? 's' : ''}` : ''}
+    <span class="petit">${depasse ? ` — ⚠️ dépasse le maximum de ${fmtHeures(lim.semaine)}` : semaine ? ' ✓' : ''}${trop.length ? ` — ⚠️ trop d’heures le ${trop.join(', ').toLowerCase()} (maximum ${fmtHeures(lim.jour)} par jour)` : ''}</span>
+    <div class="petit doux">${esc(lim.texte)}.</div>`;
+}
+document.addEventListener('input', ev => { if (/^(ph_|pt_|pe_naissance|pe_du)/.test(ev.target.id || '')) majTotaux(); });
+document.addEventListener('change', ev => { if (/^(ph_|pt_|pe_naissance|pe_du)/.test(ev.target.id || '')) majTotaux(); });
 document.addEventListener('change', ev => {   // la case « tous » suit l'état des cases des jours
   if (!ev.target.classList || !ev.target.classList.contains('pj')) return;
   const tous = $('[data-c="protoTousJours"]'); if (tous) tous.checked = $$('.pj').every(c => c.checked);
