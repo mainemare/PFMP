@@ -61,7 +61,7 @@ Limites
   l'impriment, et peuvent l'envoyer au professeur referent de leur classe. L'e-mail part de votre compte Google.
   Mise en place (une fois, et a refaire si Code.gs change) :
   1. Apps Script : remplacez le contenu de Code.gs par la nouvelle version de google/Code.gs, enregistrez.
-  2. Choisissez la fonction "autoriserEnvoiMail" puis Executer : Google demande l'autorisation d'envoyer des e-mails
+  2. Choisissez la fonction "autoriser" puis Executer : Google demande l'autorisation d'envoyer des e-mails
      en votre nom. Acceptez (meme ecran "application non validee" que lors de l'installation).
   3. Deployer > Gerer les deploiements > (crayon) > Version : Nouvelle version > Deployer. L'adresse /exec ne change pas.
   4. Chaque professeur referent indique son adresse e-mail dans l'application : Classes et dates > "Reception des
@@ -71,3 +71,42 @@ Limites
   Limite Google : 100 e-mails par jour pour un compte Gmail gratuit.
   Nouvelle annee scolaire : remplacez public/protocole-2026-2027.pdf par le nouveau formulaire. Si sa mise en page
   change, les emplacements des champs (public/protocole.js) devront etre ajustes.
+
+6. VALIDATION DU PROTOCOLE ET CONVENTION DE STAGE AVEC SIGNATURES EN LIGNE
+  Deroulement :
+  1. L'eleve envoie son protocole d'accord : il apparait dans la console du professeur referent (Alertes et
+     dossier de l'eleve > Demandes). Le referent donne un avis favorable ou defavorable (motif montre a l'eleve).
+  2. Avis favorable : la demande passe a « Accord - protocole signe » et l'eleve peut creer sa convention
+     (page Protocole). Il complete son identite ; tout le contenu est chiffre sur son appareil.
+  3. L'eleve obtient UN lien et un CODE personnel pour : son representant legal (s'il est mineur), le representant
+     de l'entreprise et le tuteur (s'il est different). Il prepare les e-mails depuis sa propre messagerie.
+     L'eleve, l'enseignant referent et le chef d'etablissement signent avec leur compte de l'application.
+  4. Chacun ouvre le lien, lit la convention (PDF de 10 pages), signe a l'ecran (doigt, stylet, souris)
+     ou envoie la photo de sa signature et, pour l'entreprise, du cachet.
+  5. Derniere signature : la convention est « signee », la demande passe a « Convention signee » (niveau 5).
+     Le PDF signe s'edite depuis le lien ou depuis le compte de l'eleve.
+
+  Mise en place :
+  - Mettez a jour Code.gs, executez la fonction "autoriser" (elle demande aussi l'acces a Google Drive, ou sont
+    ranges les fichiers chiffres des conventions, dans un dossier cree automatiquement), puis redeployez une
+    Nouvelle version (etape 5 ci-dessus).
+  - Le journal d'execution de "autoriser" affiche le CODE « CHEF D'ETABLISSEMENT ». Donnez-le uniquement au
+    proviseur, a son adjoint ou au DDFPT : dans l'application, Classes et dates > « Signature pour le chef
+    d'etablissement », ils saisissent ce code pour pouvoir signer. Pour le changer : Proprietes du script > CODE_CHEF.
+  - Classes et dates > « Parametres de l'etablissement » : verifiez les informations imprimees sur la convention
+    (chef d'etablissement, date de la deliberation du CA, assureur et numero de contrat de l'etablissement...).
+  - Pour chaque classe, renseignez le « Diplome prepare » (imprime en tete de la convention).
+
+  Protection des donnees :
+  - Le classeur ne contient que le suivi (qui a signe et quand). L'identite de l'eleve et les signatures sont
+    chiffrees (AES 256 bits) avec une cle qui ne figure que dans le lien : ni le classeur, ni le fichier Drive,
+    ni ce script ne permettent de les lire.
+  - Le lien seul ne suffit pas : il faut aussi le code personnel (signataires externes) ou le compte.
+    6 codes faux de suite bloquent le role pendant un quart d'heure.
+  - L'eleve rouvre sa convention avec son mot de passe. Si son mot de passe est reinitialise par un professeur,
+    il doit utiliser le lien recu a la creation (le garder precieusement).
+  - Une convention signee ne peut plus etre modifiee ; le referent peut l'annuler (dossier de l'eleve).
+
+  Valeur juridique : il s'agit d'une signature electronique « simple » (lien + code ou compte, date et heure
+  enregistrees). Faites valider ce mode de signature par le chef d'etablissement avant de l'ouvrir aux familles
+  et aux entreprises. Les conventions restent imprimables pour une signature manuscrite si besoin.

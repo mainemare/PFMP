@@ -172,6 +172,8 @@ async function traiter(req, res) {
   }
   // L'envoi d'e-mails n'existe que dans la version Google (google/Code.gs) : l'eleve telecharge alors son PDF.
   if (route === 'POST /api/protocole/envoyer') return erreur(req, res, 501, 'envoi_indisponible');
+  // Conventions chiffrees et signatures : uniquement dans la version Google (google/Code.gs).
+  if (chemin.startsWith('/api/convention') || route === 'POST /api/moi/chef') return erreur(req, res, 501, 'convention_indisponible');
   if (route === 'POST /api/deconnexion') return envoyer(req, res, 200, '{"ok":true}');
   if (route === 'GET /api/profs') return envoyer(req, res, 200, JSON.stringify(users.filter(u => u.role === 'prof').map(u => ({ id: u.id, nom: u.nom, prenom: u.prenom }))));
 

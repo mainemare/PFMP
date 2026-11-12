@@ -12,6 +12,7 @@ async function chargerEleves() {
   S.eleves = (await api('GET', '/api/eleves')).map(e => ({ id: e.id, identifiant: e.identifiant, d: normaliser(e.docs) }))
     .sort((a, b) => (a.d.profil.nom + a.d.profil.prenom).localeCompare(b.d.profil.nom + b.d.profil.prenom, 'fr'));
   if (S.codeEleve === undefined) { try { S.codeEleve = ((await api('GET', '/api/admin/codes')) || {}).codeEleve || ''; } catch { S.codeEleve = ''; } }
+  await Promise.all([chargerConventions(), chargerEtab()]);
 }
 // Relit la version à jour sur le serveur avant de la modifier (plusieurs professeurs peuvent travailler en même temps).
 async function mutProf(id, fn) {
@@ -71,6 +72,8 @@ function carteEleve(e) {
     <div class="tags">${enUrgence(d) ? `<span class="badge urg">🚨 URGENCE${dt ? ` J${jours(dt.debut) > 0 ? '-' + jours(dt.debut) : ''}` : ''}</span>` : ''}
       ${d.prof.urgence ? `<span class="badge" style="background:#0d9488">Pris en main</span>` : ''}
       ${relire ? `<span class="badge" style="background:#7c3aed">${relire} doc. à relire</span>` : ''}
+      ${d.demandes.liste.some(x => protocoleAValider(e, x)) ? '<span class="badge" style="background:#7c3aed">🤝 protocole à valider</span>' : ''}
+      ${typeof badgeConvention === 'function' ? badgeConvention(e) : ''}
       ${dt && dt.derog ? '<span class="badge clair">Dates dérogatoires</span>' : ''}
       ${d.prof.niveauForce != null ? '<span class="badge clair">Niveau fixé par le prof</span>' : ''}</div></article>`;
 }
@@ -128,7 +131,42 @@ A.supEleve = async () => {
   if (!confirm(`Supprimer définitivement le compte et le dossier de ${nomEleve(e)} ?`)) return;
   await api('POST', '/api/admin/supprimer', { id: e.id }); S.dossier = null; await chargerEleves(); render();
 };
-const dosSuivi = e => e.d.demandes.liste.length ? [...e.d.demandes.liste].reverse().map(x => carteDemande(x, true)).join('') : '<p class="doux">L’élève n’a encore sélectionné aucune entreprise.</p>';
+const dosSuivi = e => e.d.demandes.liste.length ? [...e.d.demandes.liste].reverse().map(x => blocProtocoleProf(e, x) + blocConventionProf(e, x) + carteDemande(x, true)).join("") : '<p class="doux">L’élève n’a encore sélectionné aucune entreprise.</p>';
+
+/* ---------- Validation du protocole d'accord (professeur référent) ---------- */
+const protocoleAValider = (e, x) => { const p = x.protocole, v = validationDe(e.d, x.id); return !!(p && p.soumisLe && (!v || p.soumisLe > v.date)); };
+const protocolesAValider = () => S.eleves.flatMap(e => e.d.demandes.liste.filter(x => protocoleAValider(e, x)).map(x => ({ e, x })));
+const estReferentDe = e => { const cl = classeDe(e.d); return !cl || !cl.referentId || cl.referentId === S.user.id; };
+function blocProtocoleProf(e, x) {
+  const p = x.protocole; if (!p || !p.soumisLe) return '';
+  const v = validationDe(e.d, x.id), attente = protocoleAValider(e, x), n = p.ent || {}, h = p.horaires || {};
+  const li = (t, val) => val ? `<dt>${t}</dt><dd>${esc(val)}</dd>` : '';
+  const horaires = JOURS.map(([j, l]) => { const m = [h[j + '_matin_de'], h[j + '_matin_a']], a = [h[j + '_apresmidi_de'], h[j + '_apresmidi_a']];
+    const t = [m[0] && `${m[0]}–${m[1] || '?'}`, a[0] && `${a[0]}–${a[1] || '?'}`].filter(Boolean).join(' / '); return t ? `${l} ${t}` : ''; }).filter(Boolean).join(' · ');
+  const cl = classeDe(e.d), ref = cl && cl.referentId ? nomProf(cl.referentId) : '';
+  return `<div class="demande protocole-prof ${attente ? 'attente' : ''}" style="--c:${attente ? '#7c3aed' : v && v.avis === 'favorable' ? '#15803d' : '#b91c1c'}">
+    <div class="tete"><b>🤝 Protocole d’accord — ${esc(n.entreprise || x.nom)}</b>
+      <span class="badge" style="background:${attente ? '#7c3aed' : v.avis === 'favorable' ? '#15803d' : '#b91c1c'}">${attente ? 'À valider' : v.avis === 'favorable' ? 'Validé' : 'Refusé'}</span></div>
+    <p class="petit doux">Soumis le ${fmtDT(p.soumisLe)}${x.protocoleEnvoyeLe ? ' · PDF envoyé par e-mail au référent' : ''}.</p>
+    <dl>${li('Adresse', n.adresse)}${li('Téléphone', n.tel)}${li('SIRET', n.siret)}${li('Signataire', [n.signataire, n.fonctionSignataire].filter(Boolean).join(', '))}
+      ${li('Tuteur', [n.tuteur, n.fonctionTuteur].filter(Boolean).join(', '))}${li('Domaine', n.domaine)}${li('Lieu si différent', n.lieu)}
+      ${li('Signature électronique', p.signElec === 'oui' ? 'Acceptée' : p.signElec === 'non' ? 'Refusée' : '')}${li('Horaires', horaires)}</dl>
+    ${v && !attente ? `<p class="petit">${v.avis === 'favorable' ? '✅ Avis favorable' : '❌ Avis défavorable'} de ${esc(v.par)} le ${fmtDT(v.date)}${v.motif ? ` — « ${esc(v.motif)} »` : ''}</p>` : ''}
+    ${estReferentDe(e) ? `<label class="petit" style="margin-top:8px">Motif / commentaire${attente ? '' : ' (pour modifier l’avis)'}<input id="vp_${x.id}" placeholder="Facultatif pour un avis favorable"></label>
+      <div class="actions"><button class="btn mini" data-a="validerProtocole" data-id="${x.id}" data-avis="favorable">✅ Avis favorable</button>
+        <button class="btn mini danger" data-a="validerProtocole" data-id="${x.id}" data-avis="defavorable">❌ Avis défavorable</button></div>`
+      : `<p class="petit doux">Seul le professeur référent de la classe${ref ? ` (${esc(ref)})` : ''} peut valider ce protocole.</p>`}</div>`;
+}
+A.validerProtocole = async el => {
+  const e = eleveOuvert(), id = el.dataset.id, avis = el.dataset.avis, motif = val('vp_' + id);
+  if (avis === 'defavorable' && !motif) throw new Error('Indiquez le motif de l’avis défavorable : il sera montré à l’élève.');
+  await mutProf(e.id, p => { p.validations = p.validations || {}; p.validations[id] = { avis, motif, date: maintenant(), par: nomComplet(S.user), parId: S.user.id }; });
+  // Avis favorable : la demande passe à « Accord – protocole signé » (niveau 4).
+  const k = `eleve/${e.id}/demandes`, dem = Object.assign(DEF.demandes(), await getDoc(k) || {});
+  const x = dem.liste.find(d => d.id === id);
+  if (x && avis === 'favorable' && !['convention'].includes(x.statut)) { x.statut = 'protocole'; x.majLe = maintenant(); await putDoc(k, dem); e.d.demandes = dem; }
+  render(); toast(avis === 'favorable' ? 'Protocole validé' : 'Avis défavorable enregistré');
+};
 const dosActivite = e => e.d.journal.evenements.length ? `<ul class="journal">${[...e.d.journal.evenements].reverse().map(v => `<li><time>${fmtDT(v.date)}</time>${esc(v.texte)}</li>`).join('')}</ul>` : '<p class="doux">Aucune activité enregistrée.</p>';
 function dosDoc(e, t) {
   const doc = e.d[t], memento = t === 'memento';
@@ -189,7 +227,14 @@ function vueAlertes() {
   const inactifs = S.eleves.filter(e => { const d = e.d, ev = d.journal.evenements, dt = datesEleve(d);
     return niveau(d) < 5 && dt && dt.fin >= today() && !enUrgence(d) && (!ev.length || jours(ev[ev.length - 1].date.slice(0, 10)) <= -14); });
   const bouton = (e, o) => `<button class="btn mini sec" data-a="ouvrir" data-id="${e.id}" data-o="${o}">Ouvrir le dossier</button>`;
-  return `<section class="carte"><h2>🚨 Plan d’urgence (${u.length})</h2><p class="doux">Élèves à 10 jours ou moins du début du stage sans convention signée : le professeur référent prend le dossier en main.</p>
+  const aValider = protocolesAValider(), mesValidations = aValider.filter(({ e }) => estReferentDe(e));
+  return `<section class="carte"><h2>🤝 Protocoles d’accord à valider (${aValider.length})</h2>
+    ${aValider.length ? aValider.map(({ e, x }) => `<p><b>${esc(nomEleve(e))}</b> <span class="petit doux">${esc((classeDe(e.d) || {}).nom || '')}</span> — ${esc((x.protocole.ent || {}).entreprise || x.nom)}
+      <span class="petit doux">· soumis le ${fmt(x.protocole.soumisLe)}</span>${estReferentDe(e) ? ' <span class="badge" style="background:#7c3aed">Vous êtes référent</span>' : ''} ${bouton(e, 'suivi')}</p>`).join('')
+      : '<p class="doux">Aucun protocole en attente.</p>'}
+    ${mesValidations.length ? '' : ''}</section>
+  ${typeof sectionConventionsAlertes === 'function' ? sectionConventionsAlertes() : ''}
+  <section class="carte"><h2>🚨 Plan d’urgence (${u.length})</h2><p class="doux">Élèves à 10 jours ou moins du début du stage sans convention signée : le professeur référent prend le dossier en main.</p>
     ${u.length ? `<div class="table-scroll"><table><tr><th>Élève</th><th>Échéance</th><th>Avancement</th><th>Référent</th><th>Prise en main</th><th></th></tr>${u.map(e => { const d = e.d, cl = classeDe(d), j = jours(datesEleve(d).debut), moi = cl && cl.referentId === S.user.id;
       return `<tr><td><b>${esc(nomEleve(e))}</b><br><span class="petit doux">${esc(cl ? cl.nom : '')}</span></td><td><b style="color:#dc2626">${j > 0 ? 'J-' + j : 'Stage commencé'}</b><br><span class="petit doux">${fmt(datesEleve(d).debut)}</span></td>
         <td style="min-width:170px">${barre(niveau(d), true, d)}</td><td>${moi ? '<span class="badge" style="background:#dc2626">Vous</span>' : esc(cl && nomProf(cl.referentId) || 'Non désigné')}</td>
@@ -204,6 +249,7 @@ function vueAlertes() {
 function vueClasses() {
   return `<section class="carte"><h2>Classes et dates de stage</h2><p class="doux">Chaque classe a une couleur, un professeur référent et une ou plusieurs périodes de stage. Les alertes des élèves et le plan d’urgence (J-10) se calculent sur la prochaine période.</p>
     ${S.codeEleve ? `<div class="alerte info">🔑 Code d’inscription à communiquer aux élèves : <b>${esc(S.codeEleve)}</b></div>` : ''}
+    ${carteEtablissement()}
     <div class="carte" style="margin:0 0 14px"><h3>✉️ Réception des protocoles d’accord</h3>
       <p class="doux petit">Les élèves des classes dont vous êtes le professeur référent peuvent vous envoyer leur protocole d’accord rempli (PDF) à cette adresse. Elle n’est jamais montrée aux élèves.</p>
       <div class="ligne"><input id="moi_email" type="email" value="${esc(S.user.email || '')}" placeholder="prenom.nom@ac-normandie.fr" aria-label="Votre adresse e-mail">
@@ -214,7 +260,7 @@ function vueClasses() {
 function carteClasse(cl) {
   const els = S.eleves.filter(e => e.d.profil.classeId === cl.id);
   return `<section class="classe" style="--cc:${esc(cl.couleur)}" data-cl="${cl.id}"><header><h2>${esc(cl.nom || 'Nouvelle classe')}</h2><span>${els.length} élève(s)</span>${cl.neuf ? '<span>non enregistrée</span>' : ''}</header><div style="padding:16px">
-    <div class="deux"><label>Nom de la classe<input class="c_nom" value="${esc(cl.nom)}" placeholder="ex. 3e B"></label><label>Couleur<input type="color" class="c_couleur" value="${esc(cl.couleur)}"></label>
+    <div class="deux"><label>Nom de la classe<input class="c_nom" value="${esc(cl.nom)}" placeholder="ex. 3e B"></label><label>Couleur<input type="color" class="c_couleur" value="${esc(cl.couleur)}"></label><label>Diplôme préparé <span class="doux petit">(sur la convention)</span><input class="c_diplome" value="${esc(cl.diplome || '')}" placeholder="ex. TLEPRO METIERS ELECT. ENVIRON. CONNECTES"></label>
       <label>Professeur référent<select class="c_ref"><option value="">— Non désigné —</option>${S.profs.map(p => `<option value="${p.id}" ${p.id === cl.referentId ? 'selected' : ''}>${esc(nomComplet(p))}</option>`).join('')}</select></label></div>
     <h3>Périodes de stage</h3>
     <div class="table-scroll"><table><tr><th>Intitulé</th><th>Début</th><th>Fin</th><th></th></tr>${cl.periodes.map(p => `<tr data-p="${p.id}"><td><input class="p_label" value="${esc(p.label)}" aria-label="Intitulé"></td><td><input type="date" class="p_debut" value="${esc(p.debut)}" aria-label="Début"></td>
@@ -228,7 +274,7 @@ function carteClasse(cl) {
 }
 function lireClasse(el) {
   const sec = el.closest('[data-cl]'), cl = S.classes.find(c => c.id === sec.dataset.cl);
-  cl.nom = $('.c_nom', sec).value.trim(); cl.couleur = $('.c_couleur', sec).value; cl.referentId = $('.c_ref', sec).value;
+  cl.nom = $('.c_nom', sec).value.trim(); cl.couleur = $('.c_couleur', sec).value; cl.referentId = $('.c_ref', sec).value; cl.diplome = $('.c_diplome', sec).value.trim();
   for (const tr of $$('tr[data-p]', sec)) { const p = cl.periodes.find(x => x.id === tr.dataset.p); Object.assign(p, { label: $('.p_label', tr).value.trim(), debut: $('.p_debut', tr).value, fin: $('.p_fin', tr).value }); }
   return { cl, sec };
 }

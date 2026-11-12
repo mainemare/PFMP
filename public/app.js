@@ -27,7 +27,7 @@ const ERR = {
   identifiant_invalide: 'Identifiant : 3 à 40 caractères (lettres sans accent, chiffres, point, tiret).',
   motdepasse_court: 'Le mot de passe doit contenir au moins 6 caractères.', code_prof: 'Code professeur incorrect.',
   classe_requise: 'Choisis ta classe.', nom_requis: 'Nom et prénom sont obligatoires.', interdit: 'Action non autorisée.',
-  code_eleve: 'Code d’inscription élève incorrect : demande-le à ton professeur.', nom_initiales: 'Pour le nom, indique seulement les 2 premières lettres.', referent_sans_email: 'Ton professeur référent n’a pas encore indiqué son adresse e-mail dans l’application.', pas_de_referent: 'Aucun professeur référent n’est désigné pour ta classe.', envoi_impossible: 'L’e-mail n’a pas pu être envoyé (service de messagerie indisponible).', envoi_indisponible: 'L’envoi par e-mail n’est pas disponible avec ce serveur.', email_invalide: 'Adresse e-mail invalide.', trop_gros: 'Fichier trop volumineux.', trop_essais: 'Trop de tentatives. Réessaie dans quelques minutes.',
+  code_eleve: 'Code d’inscription élève incorrect : demande-le à ton professeur.', code_chef: 'Code « chef d’établissement » incorrect.', convention_deja_signee: 'Cette convention a déjà été signée : elle ne peut plus être recréée. Demande à ton professeur référent de l’annuler si elle doit être corrigée.', convention_introuvable: 'Convention introuvable (elle a peut-être été annulée).', convention_indisponible: 'Les conventions ne sont disponibles qu’avec la version Google de l’application.', pas_lecteur: 'Votre compte ne permet pas d’ouvrir cette convention.', nom_initiales: 'Pour le nom, indique seulement les 2 premières lettres.', referent_sans_email: 'Ton professeur référent n’a pas encore indiqué son adresse e-mail dans l’application.', pas_de_referent: 'Aucun professeur référent n’est désigné pour ta classe.', envoi_impossible: 'L’e-mail n’a pas pu être envoyé (service de messagerie indisponible).', envoi_indisponible: 'L’envoi par e-mail n’est pas disponible avec ce serveur.', email_invalide: 'Adresse e-mail invalide.', trop_gros: 'Fichier trop volumineux.', trop_essais: 'Trop de tentatives. Réessaie dans quelques minutes.',
   non_connecte: 'Session expirée, reconnecte-toi.', introuvable: 'Élément introuvable.',
 };
 const NIV = [
@@ -49,7 +49,7 @@ const DEF = {
   demandes: () => ({ liste: [] }),
   journal: () => ({ evenements: [] }),
   etat: () => ({ conseilsLus: [] }),
-  prof: () => ({ conseils: [], propositions: [], niveauForce: null, dates: null, urgence: null }),
+  prof: () => ({ conseils: [], propositions: [], niveauForce: null, dates: null, urgence: null, validations: {} }),
 };
 const normaliser = docs => { const o = {}; for (const k in DEF) o[k] = Object.assign(DEF[k](), (docs && docs[k]) || {}); return o; };
 const CHAMPS = {
@@ -99,7 +99,7 @@ function journal(texte) {
   j.evenements = j.evenements.slice(-150);
   sauver('journal').catch(() => {});
 }
-function sessionFermee() { S.auth = 'connexion'; S.token = ''; S.user = null; S.vue = ''; S.el = null; S.eleves = []; S.dossier = null; localStorage.removeItem('stages_token'); modal(''); }
+function sessionFermee() { try { if (S.user) sessionStorage.removeItem('stages_kek_' + S.user.id); } catch { /* */ } S.auth = 'connexion'; S.token = ''; S.user = null; S.vue = ''; S.el = null; S.eleves = []; S.dossier = null; localStorage.removeItem('stages_token'); modal(''); }
 
 /* ---------- Calculs ---------- */
 function dist(a, b) {
@@ -213,7 +213,7 @@ function render() {
 function entete(prof) {
   let nav;
   if (prof) {
-    const nu = urgences().filter(e => !e.d.prof.urgence).length;
+    const nu = urgences().filter(e => !e.d.prof.urgence).length + protocolesAValider().filter(({ e }) => estReferentDe(e)).length;
     nav = [['tableau', '📊 Tableau de bord'], ['alertes', '🔔 Alertes', nu], ['carte', '🗺️ Carte'], ['classes', '📅 Classes et dates'], ['entreprises', '🏢 Entreprises']];
   } else {
     const d = S.el, nl = d.prof.conseils.filter(c => !d.etat.conseilsLus.includes(c.id)).length;
@@ -244,10 +244,17 @@ function vueAuth() {
     <div class="carte"><div class="tabs">${tab('connexion', 'Connexion')}${tab('eleve', 'Inscription élève')}${tab('prof', 'Inscription professeur')}</div>${corps}</div><div class="zone-installer" style="text-align:center">${blocInstaller()}</div></div>`;
 }
 A.auth = el => { S.auth = el.dataset.t; render(); };
-A.connexion = async () => ouvrirSession(await api('POST', '/api/connexion', { identifiant: val('a_id'), motdepasse: $('#a_pw').value }));
-A.inscription = async () => ouvrirSession(await api('POST', '/api/inscription', {
-  role: S.auth, prenom: val('a_prenom'), nom: S.auth === 'eleve' ? initiales(val('a_nom')) : val('a_nom'), identifiant: val('a_id'), motdepasse: $('#a_pw').value, classeId: val('a_classe'), codeProf: val('a_code'), codeEleve: val('a_codeEleve'),
-}));
+// À la connexion, la clé personnelle de l'élève (pour rouvrir sa convention chiffrée) est dérivée de son mot de passe.
+A.connexion = async () => {
+  const ident = val('a_id'), mdp = $('#a_pw').value, r = await api('POST', '/api/connexion', { identifiant: ident, motdepasse: mdp });
+  await memoriserCle(r.user, mdp, r.user.identifiant); return ouvrirSession(r);
+};
+A.inscription = async () => {
+  const mdp = $('#a_pw').value, r = await api('POST', '/api/inscription', {
+    role: S.auth, prenom: val('a_prenom'), nom: S.auth === 'eleve' ? initiales(val('a_nom')) : val('a_nom'), identifiant: val('a_id'), motdepasse: mdp, classeId: val('a_classe'), codeProf: val('a_code'), codeEleve: val('a_codeEleve'),
+  });
+  await memoriserCle(r.user, mdp, r.user.identifiant); return ouvrirSession(r);
+};
 async function ouvrirSession(r) {
   S.token = r.token; localStorage.setItem('stages_token', r.token); S.user = r.user; S.vue = '';
   await charger(); render(); rappelQuotidien();
@@ -267,6 +274,7 @@ async function charger() {
   const docs = {};
   await Promise.all(Object.keys(DEF).map(async k => { docs[k] = await getDoc(`eleve/${S.user.id}/${k}`); }));
   S.el = normaliser(docs);
+  await Promise.all([chargerEtab(), chargerConventions()]);
   S.vue = S.vue || (S.el.profil.residences.some(r => r.lat != null) ? 'accueil' : 'profil');
 }
 

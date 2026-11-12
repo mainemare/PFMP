@@ -88,7 +88,9 @@ function vueProtocole() {
   return `<section class="carte"><h2>📝 Protocole d’accord</h2>
     <p class="doux">Remplis le protocole d’accord du lycée : il sera imprimé sur le formulaire officiel, exactement comme la version papier. Tu peux le compléter avec l’entreprise, l’imprimer et l’envoyer à ton professeur référent.</p>
     <div class="alerte info petit">🔒 Ton nom, ta date de naissance, ton adresse et les téléphones ne sont <b>pas enregistrés</b> dans l’application : ils sont seulement écrits dans le PDF. Si tu fermes l’application, il faudra les saisir à nouveau.</div>
-    <label>Entreprise concernée<select data-c="protoDemande"><option value="">— Autre entreprise (à saisir) —</option>${liste.map(x => `<option value="${x.id}" ${x.id === P.demandeId ? 'selected' : ''}>${esc(x.nom)} · ${(STATUTS[x.statut] || STATUTS.a_appeler)[0]}</option>`).join('')}</select></label></section>
+    <label>Entreprise concernée<select data-c="protoDemande"><option value="">— Autre entreprise (à saisir) —</option>${liste.map(x => `<option value="${x.id}" ${x.id === P.demandeId ? 'selected' : ''}>${esc(x.nom)} · ${(STATUTS[x.statut] || STATUTS.a_appeler)[0]}</option>`).join('')}</select></label>
+    ${blocValidation(S.el, liste.find(x => x.id === P.demandeId))}
+    ${typeof blocConventionEleve === 'function' ? blocConventionEleve(liste.find(x => x.id === P.demandeId)) : ''}</section>
   <section class="carte"><h3>À compléter par l’élève</h3><div class="deux">${CHAMPS_ELEVE.map(c => champ('pe', c, P.eleve)).join('')}</div></section>
   <section class="carte"><h3>À compléter par l’entreprise</h3><p class="doux petit">Tu peux remplir ce que tu sais déjà ; l’entreprise complètera ou corrigera le reste et apposera sa signature et son cachet.</p>
     <div class="deux">${CHAMPS_ENTREPRISE.map(c => champ('pn', c, P.ent)).join('')}</div>
@@ -110,7 +112,7 @@ function vueProtocole() {
   <section class="carte"><div class="actions">
     <button class="btn" data-a="protoApercu">👁️ Aperçu et impression</button>
     <button class="btn sec" data-a="protoTelecharger">⬇️ Télécharger le PDF</button>
-    <button class="btn sec" data-a="protoEnvoyer">✉️ Envoyer à mon professeur référent${referent ? ` (${esc(nomComplet(referent))})` : ''}</button></div>
+    <button class="btn sec" data-a="protoEnvoyer">✉️ Envoyer pour validation à mon professeur référent${referent ? ` (${esc(nomComplet(referent))})` : ''}</button></div>
     <p class="doux petit" style="margin-top:8px">Le PDF est fabriqué sur ton appareil. L’envoi transmet le PDF par e-mail à ton professeur référent, sans le garder dans l’application.</p></section>`;
 }
 C.protoDemande = el => { if (PROTO) lireFormulaire(); const eleve = PROTO && PROTO.eleve; PROTO = null; initProtocole(el.value || null); if (!el.value) { PROTO.demandeId = ''; for (const [k] of CHAMPS_ENTREPRISE) PROTO.ent[k] = ''; } if (eleve) PROTO.eleve = eleve; render(); };
@@ -191,19 +193,36 @@ A.protoEnvoyer = async () => {
   let b64 = ''; const t = new Uint8Array(octets);
   for (let i = 0; i < t.length; i += 0x8000) b64 += String.fromCharCode.apply(null, t.subarray(i, i + 0x8000));
   b64 = btoa(b64);
+  // La demande de validation est enregistrée même si l'e-mail ne part pas : le référent la voit dans sa console.
+  await memoriserPartieEntreprise();
+  const dem = PROTO.demandeId && S.el.demandes.liste.find(x => x.id === PROTO.demandeId);
+  if (dem) { dem.protocole.soumisLe = maintenant(); await sauver('demandes'); }
   try {
     const r = await api('POST', '/api/protocole/envoyer', { pdf: b64, fichier: nomFichier(), entreprise: PROTO.ent.entreprise });
-    await memoriserPartieEntreprise();
-    const dem = PROTO.demandeId && S.el.demandes.liste.find(x => x.id === PROTO.demandeId);
     if (dem) { dem.protocoleEnvoyeLe = maintenant(); await sauver('demandes'); }
-    journal(`Protocole d’accord envoyé au professeur référent (${PROTO.ent.entreprise})`);
-    toast(`Protocole envoyé à ${r && r.destinataire ? r.destinataire : 'ton professeur référent'}`);
+    journal(`Protocole d’accord envoyé au professeur référent pour validation (${PROTO.ent.entreprise})`);
+    toast(`Protocole envoyé à ${r && r.destinataire ? r.destinataire : 'ton professeur référent'} pour validation`);
+    render();
   } catch (e) {
     // Envoi impossible (pas d'adresse, service indisponible…) : on propose le PDF pour l'envoyer soi-même.
-    modal(`<h2>Envoi impossible</h2><p>${esc(e.message)}</p><p>Tu peux télécharger le PDF et le remettre à ton professeur, ou le déposer dans ton espace documentaire de l’ENT.</p>
+    journal(`Protocole d’accord soumis au professeur référent pour validation (${PROTO.ent.entreprise})`);
+    render();
+    modal(`<h2>E-mail non envoyé</h2><p>${esc(e.message)}</p>
+      ${dem ? '<p>✅ Ta demande de validation est quand même enregistrée : ton professeur référent la verra dans sa console.</p>' : ''}
+      <p>Tu peux aussi télécharger le PDF et le remettre à ton professeur, ou le déposer dans ton espace documentaire de l’ENT.</p>
       <button class="btn" data-a="protoTelecharger">⬇️ Télécharger le PDF</button>`);
   }
 };
+
+/* ---------- Validation du protocole par le professeur référent ---------- */
+const validationDe = (d, demandeId) => ((d.prof.validations || {})[demandeId]) || null;
+function blocValidation(d, dem) {
+  if (!dem || !dem.protocole || !dem.protocole.soumisLe) return '';
+  const v = validationDe(d, dem.id);
+  if (!v || (dem.protocole.soumisLe > v.date)) return `<div class="alerte attention petit">⏳ Protocole soumis à ton professeur référent le ${fmtDT(dem.protocole.soumisLe)} : en attente de validation.</div>`;
+  if (v.avis === 'favorable') return `<div class="alerte ok petit">✅ Protocole <b>validé</b> par ${esc(v.par)} le ${fmtDT(v.date)}${v.motif ? ` — « ${esc(v.motif)} »` : ''}. Tu peux maintenant créer ta convention de stage.</div>`;
+  return `<div class="alerte urgent petit">❌ Protocole <b>refusé</b> par ${esc(v.par)} le ${fmtDT(v.date)}${v.motif ? ` — motif : « ${esc(v.motif)} »` : ''}. Corrige ton protocole puis renvoie-le, ou cherche une autre entreprise.</div>`;
+}
 
 /* ---------- Horaires : journée type répercutée sur les jours cochés ---------- */
 const CRENEAUX = ['matin_de', 'matin_a', 'apresmidi_de', 'apresmidi_a'];

@@ -12,11 +12,16 @@ const SECTIONS = ['profil', 'cv', 'lettre', 'memento', 'demandes', 'journal', 'e
 const SESSION_MS = 12 * 3600 * 1000;
 const ITERATIONS = 300;
 
-/** A lancer une fois depuis l'editeur (bouton Executer) : prepare le classeur et affiche les codes d'inscription. */
-/** A lancer une fois depuis l'editeur apres la mise a jour : autorise le script a envoyer des e-mails (protocoles d'accord). */
-function autoriserEnvoiMail() {
+/** A lancer une fois depuis l'editeur apres chaque mise a jour : autorise l'envoi d'e-mails (protocoles d'accord)
+ *  et l'enregistrement des conventions chiffrees dans votre Google Drive, puis affiche le code « chef d'etablissement ». */
+function autoriser() {
   Logger.log("Envoi d'e-mails autorise. E-mails encore disponibles aujourd'hui : " + MailApp.getRemainingDailyQuota());
+  Logger.log('Dossier des conventions (chiffrees) : ' + dossierConventions().getName());
+  Logger.log("Code « chef d'etablissement » (proviseur, adjoint ou DDFPT) : " + config().codeChef);
 }
+function autoriserEnvoiMail() { autoriser(); }   // ancien nom, garde pour compatibilite
+
+/** A lancer une fois depuis l'editeur (bouton Executer) : prepare le classeur et affiche les codes d'inscription. */
 
 function installer() {
   const c = config();
@@ -56,6 +61,7 @@ function config() {
     secret: val('SECRET', () => Utilities.getUuid() + Utilities.getUuid()),
     codeProf: val('CODE_PROF', () => 'PROF-' + hasard(6).toUpperCase()),
     codeEleve: val('CODE_ELEVE', () => 'ELEVE-' + hasard(6).toUpperCase()),
+    codeChef: val('CODE_CHEF', () => 'CHEF-' + hasard(10).toUpperCase()),
   };
 }
 
@@ -126,12 +132,154 @@ function supprimerDocs(prefixe) {
 const comptes = () => JSON.parse(getDoc('systeme/comptes')) || [];
 const sauverComptes = l => setDoc('systeme/comptes', JSON.stringify(l));
 // L'adresse e-mail n'existe que pour les professeurs (jamais pour les eleves) et n'est renvoyee qu'au professeur lui-meme.
-const userInfo = u => ({ id: u.id, role: u.role, nom: u.nom, prenom: u.prenom, identifiant: u.identifiant, classeId: u.classeId || null, email: u.role === 'prof' ? (u.email || '') : undefined });
+const userInfo = u => ({ id: u.id, role: u.role, nom: u.nom, prenom: u.prenom, identifiant: u.identifiant, classeId: u.classeId || null,
+  email: u.role === 'prof' ? (u.email || '') : undefined, chef: u.role === 'prof' ? !!u.chef : undefined });
+
+/* ---------- Conventions : contenu chiffre dans le navigateur, range dans un dossier Google Drive ----------
+ * Le classeur ne garde que des informations de suivi (qui a signe, quand). Le contenu (identite de l'eleve,
+ * signatures) est chiffre avec une cle qui ne figure que dans le lien de signature : ce script ne peut pas le lire. */
+const ROLES_CONVENTION = ['eleve', 'representant', 'entreprise', 'tuteur', 'referent', 'chef'];
+const ROLES_EXTERNES = ['representant', 'entreprise', 'tuteur'];   // signent avec un code ; les autres avec leur compte
+// Code saisi : majuscules, sans espaces ni tirets, puis remis au format XXXX-XXXX.
+const normaliserCode = s => { const c = String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); return c.length === 8 ? c.slice(0, 4) + '-' + c.slice(4) : c; };
+function dossierConventions() {
+  const p = PropertiesService.getScriptProperties(), id = p.getProperty('DOSSIER_CONVENTIONS');
+  if (id) { try { return DriveApp.getFolderById(id); } catch (e) { /* dossier supprime : on le recree */ } }
+  const f = DriveApp.createFolder('Suivi des stages - conventions (chiffrees, ne pas modifier)');
+  p.setProperty('DOSSIER_CONVENTIONS', f.getId());
+  return f;
+}
+const lireFichierConv = id => JSON.parse(DriveApp.getFileById(id).getBlob().getDataAsString());
+function ecrireFichierConv(id, nom, obj) {
+  const t = JSON.stringify(obj);
+  if (id) { DriveApp.getFileById(id).setContent(t); return id; }
+  return dossierConventions().createFile(nom, t, 'application/json').getId();
+}
+function metaConv(id) { return /^[a-f0-9]{16}$/.test(id) ? JSON.parse(getDoc('conv/' + id)) : null; }
+function supprimerConventionsDe(eleveId) {
+  const t = table(), lignes = [];
+  t.m.forEach((x, cle) => { if (cle.indexOf('conv/') === 0 && x.texte && JSON.parse(x.texte).eleveId === eleveId) lignes.push(x.ligne); });
+  lignes.sort((a, b) => b - a).forEach(l => t.sh.deleteRow(l));
+  TABLE = null;
+}
+const sauverMetaConv = m => setDoc('conv/' + m.id, JSON.stringify(m));
+function toutesConventions() {
+  const out = []; table().m.forEach((x, cle) => { if (cle.indexOf('conv/') === 0 && x.texte) out.push(JSON.parse(x.texte)); }); return out;
+}
+// Vue « publique » du suivi (sans codes ni cle de l'eleve).
+const resumeConv = m => ({ id: m.id, eleveId: m.eleveId, demandeId: m.demandeId, classeId: m.classeId, creeLe: m.creeLe, majLe: m.majLe,
+  roles: m.roles, signatures: m.signatures, statut: m.statut, version: m.version });
+function referentDeClasse(classeId) {
+  const cl = ((JSON.parse(getDoc('commun/classes')) || {}).classes || []).find(c => c.id === classeId);
+  return cl ? (cl.referentId || '') : '';
+}
+// Qui peut agir sur une convention, pour quel role.
+function peutAgir(m, user, role, code) {
+  if (ROLES_EXTERNES.indexOf(role) >= 0) {
+    const c = m.codes && m.codes[role];
+    if (!c) return false;
+    const cle = 'code|' + m.id + '|' + role;
+    if (trop(cle, 6)) throw Object.assign(new Error('trop_essais'), { http: 429 });
+    if (hacher(normaliserCode(code), c.sel) !== c.hash) { compter(cle); return false; }
+    return true;
+  }
+  if (!user) return false;
+  if (role === 'eleve') return user.role === 'eleve' && user.id === m.eleveId;
+  if (role === 'referent') { const r = referentDeClasse(m.classeId); return user.role === 'prof' && (!r || r === user.id); }
+  if (role === 'chef') return user.role === 'prof' && !!user.chef;
+  return false;
+}
+function majDemandeEleve(eleveId, demandeId, fn) {
+  const k = 'eleve/' + eleveId + '/demandes', d = JSON.parse(getDoc(k)) || { liste: [] };
+  const x = (d.liste || []).find(y => y.id === demandeId);
+  if (x) { fn(x); setDoc(k, JSON.stringify(d)); }
+}
+
+// Routes des conventions. Renvoie null si la route n'est pas une route de convention.
+function routesConvention(route, b, user, jeton) {
+  if (route === 'POST /api/convention/lire') {
+    // Lecture par le lien : l'acces demande un code (signataires externes) ou un compte (eleve, referent, chef).
+    const m = metaConv(String(b.id || '')); if (!m || m.statut === 'annulee') return ko(404, 'convention_introuvable');
+    const role = String(b.role || '');
+    const lecteurCompte = user && (peutAgir(m, user, 'eleve') || peutAgir(m, user, 'referent') || peutAgir(m, user, 'chef'));
+    if (!lecteurCompte && !(ROLES_EXTERNES.indexOf(role) >= 0 && peutAgir(m, null, role, b.code))) return ko(403, ROLES_EXTERNES.indexOf(role) >= 0 ? 'code_convention' : 'pas_lecteur');
+    const f = lireFichierConv(m.fichier);
+    return ok({ meta: resumeConv(m), chiffre: f.chiffre, sig: f.sig || {}, cleEleve: user && user.id === m.eleveId ? m.cleEleve : undefined });
+  }
+  if (!user && route !== 'POST /api/convention/signer') return null;
+
+  if (route === 'GET /api/conventions') {
+    const l = toutesConventions().filter(m => m.statut !== 'annulee');
+    if (user.role === 'prof') return ok(l.map(resumeConv));
+    return ok(l.filter(m => m.eleveId === user.id).map(m => Object.assign(resumeConv(m), { cleEleve: m.cleEleve })));
+  }
+  if (route === 'POST /api/convention/creer') {
+    if (user.role !== 'eleve') return ko(403, 'interdit');
+    const chiffre = String(b.chiffre || ''), roles = (b.roles || []).filter(r => ROLES_CONVENTION.indexOf(r) >= 0);
+    if (!chiffre || chiffre.length > 1500000) return ko(400, 'invalide');
+    if (['eleve', 'entreprise', 'referent', 'chef'].some(r => roles.indexOf(r) < 0)) return ko(400, 'invalide');
+    const profil = JSON.parse(getDoc('eleve/' + user.id + '/profil')) || {};
+    const demandeId = String(b.demandeId || '');
+    // Une seule convention active par demande : l'ancienne est remplacee si personne ne l'a encore signee.
+    const ancienne = toutesConventions().find(m => m.eleveId === user.id && m.demandeId === demandeId && m.statut !== 'annulee');
+    if (ancienne && Object.keys(ancienne.signatures || {}).length) return ko(409, 'convention_deja_signee');
+    const codes = {};
+    for (const r of ROLES_EXTERNES) {
+      if (roles.indexOf(r) < 0) continue;
+      const code = normaliserCode((b.codes || {})[r]);
+      if (code.length < 8) return ko(400, 'invalide');
+      const sel = hasard(32); codes[r] = { sel: sel, hash: hacher(code, sel) };
+    }
+    const id = ancienne ? ancienne.id : hasard(16);
+    const fichier = ecrireFichierConv(ancienne ? ancienne.fichier : null, 'convention-' + id + '.json', { chiffre: chiffre, sig: {} });
+    const m = { id: id, eleveId: user.id, demandeId: demandeId, classeId: profil.classeId || user.classeId, creeLe: new Date().toISOString(), majLe: new Date().toISOString(),
+      version: ancienne ? (ancienne.version || 1) + 1 : 1, roles: roles, codes: codes, signatures: {}, statut: 'en_cours', fichier: fichier, cleEleve: String(b.cleEleve || '').slice(0, 2000) };
+    sauverMetaConv(m);
+    majDemandeEleve(user.id, demandeId, x => { x.conventionId = id; });
+    return ok(resumeConv(m));
+  }
+  if (route === 'POST /api/convention/signer') {
+    const m = metaConv(String(b.id || '')); if (!m || m.statut === 'annulee') return ko(404, 'convention_introuvable');
+    const role = String(b.role || '');
+    if (m.roles.indexOf(role) < 0) return ko(400, 'invalide');
+    if (!peutAgir(m, user, role, b.code)) return ko(403, ROLES_EXTERNES.indexOf(role) >= 0 ? 'code_convention' : 'pas_signataire');
+    if (m.signatures[role]) return ko(409, 'deja_signe');
+    const sig = String(b.signature || ''); if (!sig || sig.length > 900000) return ko(400, 'invalide');
+    const f = lireFichierConv(m.fichier); f.sig = f.sig || {}; f.sig[role] = sig; ecrireFichierConv(m.fichier, null, f);
+    m.signatures[role] = { le: new Date().toISOString(), par: user ? user.prenom + ' ' + user.nom : 'code' };
+    m.majLe = new Date().toISOString();
+    if (m.roles.every(r => m.signatures[r])) {
+      m.statut = 'signee';
+      majDemandeEleve(m.eleveId, m.demandeId, x => { x.statut = 'convention'; x.conventionSigneeLe = m.majLe; x.majLe = m.majLe; });
+    }
+    sauverMetaConv(m);
+    return ok(resumeConv(m));
+  }
+  if (route === 'POST /api/convention/supprimer') {
+    const m = metaConv(String(b.id || '')); if (!m) return ko(404, 'convention_introuvable');
+    const proprio = user.role === 'eleve' && user.id === m.eleveId;
+    if (!(proprio && !Object.keys(m.signatures || {}).length) && !peutAgir(m, user, 'referent')) return ko(403, 'interdit');
+    try { DriveApp.getFileById(m.fichier).setTrashed(true); } catch (e) { /* deja supprime */ }
+    m.statut = 'annulee'; m.majLe = new Date().toISOString(); delete m.cleEleve; m.codes = {}; sauverMetaConv(m);
+    majDemandeEleve(m.eleveId, m.demandeId, x => { delete x.conventionId; if (x.statut === 'convention') x.statut = 'protocole'; });
+    return ok({ ok: true });
+  }
+  if (route === 'POST /api/moi/chef') {
+    if (user.role !== 'prof') return ko(403, 'interdit');
+    const l = comptes(), u = l.find(x => x.id === user.id);
+    if (b.retirer) u.chef = false;
+    else if (String(b.code || '').trim().toUpperCase() !== config().codeChef.toUpperCase()) return ko(403, 'code_chef');
+    else u.chef = true;
+    sauverComptes(l);
+    return ok(userInfo(u));
+  }
+  return null;
+}
 
 /* ---------- Routes (memes chemins que server.js) ---------- */
 function traiter(req) {
   const m = String(req.m || 'GET'), chemin = String(req.p || ''), b = req.b || {}, route = m + ' ' + chemin;
-  const ecriture = m !== 'GET' && route !== 'POST /api/connexion' && route !== 'POST /api/protocole/envoyer';
+  const ecriture = m !== 'GET' && ['POST /api/connexion', 'POST /api/protocole/envoyer', 'POST /api/convention/lire'].indexOf(route) < 0;
   let verrou = null;
   if (ecriture) { verrou = LockService.getScriptLock(); verrou.waitLock(20000); }
   try { return router(m, chemin, route, b, req.t); }
@@ -176,6 +324,12 @@ function router(m, chemin, route, b, jeton) {
     const u = comptes().find(x => x.identifiant === ident);
     if (!u || hacher(String(b.motdepasse || ''), u.sel) !== u.hash) { compter(cle); return ko(401, 'identifiants'); }
     return ok({ token: creerJeton(u), user: userInfo(u) });
+  }
+
+  // Conventions : certaines routes sont ouvertes aux signataires externes (lien + code, sans compte).
+  if (chemin.indexOf('/api/convention') === 0 || route === 'POST /api/moi/chef') {
+    const r = routesConvention(route, b, jeton ? lireJeton(jeton) : null, jeton);
+    if (r) return r;
   }
 
   const user = lireJeton(jeton);
@@ -243,6 +397,8 @@ function router(m, chemin, route, b, jeton) {
     } else {
       sauverComptes(l.filter(u => u !== cible));
       supprimerDocs('eleve/' + cible.id + '/');
+      for (const cv of toutesConventions().filter(x => x.eleveId === cible.id)) { try { DriveApp.getFileById(cv.fichier).setTrashed(true); } catch (e) { /* deja supprime */ } }
+      supprimerConventionsDe(cible.id);
     }
     return ok({ ok: true });
   }
@@ -250,7 +406,7 @@ function router(m, chemin, route, b, jeton) {
   if (chemin.indexOf('/api/doc/') === 0) {
     const cle = chemin.slice(9), me = /^eleve\/([a-f0-9]{12})\/([a-z]+)$/.exec(cle);
     let droitEcriture;
-    if (/^commun\/(classes|entreprises)$/.test(cle)) droitEcriture = estProf;
+    if (/^commun\/(classes|entreprises|etablissement)$/.test(cle)) droitEcriture = estProf;
     else if (me && SECTIONS.indexOf(me[2]) >= 0) {
       if (!estProf && user.id !== me[1]) return ko(403, 'interdit');
       if (!comptes().some(u => u.id === me[1])) return ko(404, 'introuvable');
