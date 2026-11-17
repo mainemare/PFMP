@@ -18,6 +18,7 @@ function autoriser() {
   Logger.log("Envoi d'e-mails autorise. E-mails encore disponibles aujourd'hui : " + MailApp.getRemainingDailyQuota());
   Logger.log('Dossier des conventions (chiffrees) : ' + dossierConventions().getName());
   Logger.log("Code « chef d'etablissement » (proviseur, adjoint ou DDFPT) : " + config().codeChef);
+  Logger.log("Code d'inscription du DDFPT : " + config().codeDdfpt);
 }
 function autoriserEnvoiMail() { autoriser(); }   // ancien nom, garde pour compatibilite
 
@@ -28,6 +29,7 @@ function installer() {
   table();
   Logger.log("Code d'inscription des professeurs : " + c.codeProf);
   Logger.log("Code d'inscription des eleves      : " + c.codeEleve);
+  Logger.log("Code d'inscription du DDFPT        : " + c.codeDdfpt);
 }
 
 // Pour changer un code : Parametres du projet (roue dentee) > Proprietes du script > CODE_PROF ou CODE_ELEVE.
@@ -62,6 +64,7 @@ function config() {
     codeProf: val('CODE_PROF', () => 'PROF-' + hasard(6).toUpperCase()),
     codeEleve: val('CODE_ELEVE', () => 'ELEVE-' + hasard(6).toUpperCase()),
     codeChef: val('CODE_CHEF', () => 'CHEF-' + hasard(10).toUpperCase()),
+    codeDdfpt: val('CODE_DDFPT', () => 'DDFPT-' + hasard(8).toUpperCase()),
   };
 }
 
@@ -133,7 +136,7 @@ const comptes = () => JSON.parse(getDoc('systeme/comptes')) || [];
 const sauverComptes = l => setDoc('systeme/comptes', JSON.stringify(l));
 // L'adresse e-mail n'existe que pour les professeurs (jamais pour les eleves) et n'est renvoyee qu'au professeur lui-meme.
 const userInfo = u => ({ id: u.id, role: u.role, nom: u.nom, prenom: u.prenom, identifiant: u.identifiant, classeId: u.classeId || null,
-  email: u.role === 'prof' ? (u.email || '') : undefined, chef: u.role === 'prof' ? !!u.chef : undefined });
+  email: u.role !== 'eleve' ? (u.email || '') : undefined, chef: u.role === 'prof' ? !!u.chef : undefined });
 
 /* ---------- Conventions : contenu chiffre dans le navigateur, range dans un dossier Google Drive ----------
  * Le classeur ne garde que des informations de suivi (qui a signe, quand). Le contenu (identite de l'eleve,
@@ -295,13 +298,15 @@ function router(m, chemin, route, b, jeton) {
     const role = b.role, prenom = String(b.prenom || '').trim(), ident = String(b.identifiant || '').trim().toLowerCase();
     let nom = String(b.nom || '').trim();
     const mdp = String(b.motdepasse || '');
-    if (role !== 'eleve' && role !== 'prof') return ko(400, 'invalide');
+    if (['eleve', 'prof', 'ddfpt'].indexOf(role) < 0) return ko(400, 'invalide');
     if (!prenom || prenom.length > 40 || !nom || nom.length > 60) return ko(400, 'nom_requis');
     if (!/^[a-z0-9._-]{3,40}$/.test(ident)) return ko(400, 'identifiant_invalide');
     if (mdp.length < 6 || mdp.length > 200) return ko(400, 'motdepasse_court');
     let classeId = null;
     if (role === 'prof') {
       if (String(b.codeProf || '').trim() !== c.codeProf) return ko(403, 'code_prof');
+    } else if (role === 'ddfpt') {
+      if (String(b.codeDdfpt || '').trim().toUpperCase() !== c.codeDdfpt.toUpperCase()) return ko(403, 'code_ddfpt');
     } else {
       // Donnees minimales : seulement les 2 premieres lettres du nom de famille.
       nom = nom.toUpperCase();
@@ -334,9 +339,23 @@ function router(m, chemin, route, b, jeton) {
 
   const user = lireJeton(jeton);
   if (!user) return ko(401, 'non_connecte');
-  const estProf = user.role === 'prof';
+  // Personnel : professeurs et DDFPT (memes droits sur les classes, les eleves et la base d'entreprises).
+  const estProf = user.role === 'prof' || user.role === 'ddfpt';
 
   if (route === 'GET /api/moi') return ok(userInfo(user));
+
+  // Eleve : entreprise trouvee par lui-meme, proposee pour la base ; elle n'y entre qu'apres validation (prof ou DDFPT).
+  if (route === 'POST /api/entreprises/proposer') {
+    if (user.role !== 'eleve') return ko(403, 'interdit');
+    const champ = (k, n) => String(b[k] || '').trim().slice(0, n);
+    const e = { id: hasard(12), nom: champ('nom', 120), adresse: champ('adresse', 200), tel: champ('tel', 40), contact: champ('contact', 120), secteur: champ('secteur', 80),
+      demandeId: champ('demandeId', 40), eleveId: user.id, eleve: user.prenom + ' ' + user.nom, classeId: user.classeId || '', date: new Date().toISOString() };
+    if (!e.nom) return ko(400, 'invalide');
+    const d = JSON.parse(getDoc('commun/entreprises_proposees')) || { liste: [] };
+    if (d.liste.length >= 500) return ko(409, 'trop_de_propositions');
+    d.liste.push(e); setDoc('commun/entreprises_proposees', JSON.stringify(d));
+    return ok({ id: e.id });
+  }
 
   // Professeur : adresse e-mail ou il recoit les protocoles d'accord de ses classes (en tant que referent).
   if (route === 'POST /api/moi/email') {
@@ -407,6 +426,7 @@ function router(m, chemin, route, b, jeton) {
     const cle = chemin.slice(9), me = /^eleve\/([a-f0-9]{12})\/([a-z]+)$/.exec(cle);
     let droitEcriture;
     if (/^commun\/(classes|entreprises|etablissement)$/.test(cle)) droitEcriture = estProf;
+    else if (cle === 'commun/entreprises_proposees') { if (!estProf) return ko(403, 'interdit'); droitEcriture = true; }
     else if (me && SECTIONS.indexOf(me[2]) >= 0) {
       if (!estProf && user.id !== me[1]) return ko(403, 'interdit');
       if (!comptes().some(u => u.id === me[1])) return ko(404, 'introuvable');

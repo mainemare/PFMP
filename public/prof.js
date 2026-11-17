@@ -12,7 +12,7 @@ async function chargerEleves() {
   S.eleves = (await api('GET', '/api/eleves')).map(e => ({ id: e.id, identifiant: e.identifiant, d: normaliser(e.docs) }))
     .sort((a, b) => (a.d.profil.nom + a.d.profil.prenom).localeCompare(b.d.profil.nom + b.d.profil.prenom, 'fr'));
   if (S.codeEleve === undefined) { try { S.codeEleve = ((await api('GET', '/api/admin/codes')) || {}).codeEleve || ''; } catch { S.codeEleve = ''; } }
-  await Promise.all([chargerConventions(), chargerEtab()]);
+  await Promise.all([chargerConventions(), chargerEtab(), chargerPropositions()]);
 }
 // Relit la version à jour sur le serveur avant de la modifier (plusieurs professeurs peuvent travailler en même temps).
 async function mutProf(id, fn) {
@@ -30,6 +30,7 @@ function vueProf() {
     case 'classes': return vueClasses();
     case 'entreprises': return vueBase();
     case 'carte': return vueCarteProf();
+    case 'synthese': return vueSynthese();
     case 'alertes': return vueAlertes();
     default: return vueTableau();
   }
@@ -308,7 +309,7 @@ A.derogGroupeRetirer = el => derogGroupe(el, true);
 /* ---------- Base d'entreprises ---------- */
 function vueBase() {
   const sansGeo = S.entreprises.filter(e => e.lat == null).length;
-  return `<section class="carte"><h2>Base d’entreprises (${S.entreprises.length})</h2>
+  return `${sectionPropositions()}<section class="carte"><h2>Base d’entreprises (${S.entreprises.length})</h2>
     <p class="doux">Les élèves reçoivent 5 à 10 propositions parmi les entreprises localisées situées dans leur rayon de déplacement.</p>
     <div class="actions"><button class="btn" data-a="editEnt">➕ Ajouter une entreprise</button><button class="btn sec" data-a="importEnt">📥 Importer une liste</button>
       <button class="btn sec" data-a="choisirFichierEnt">📂 Importer un fichier préparé (.json)</button><input type="file" id="fichierEnt" accept=".json,application/json" hidden data-c="fichierEnt">
@@ -360,11 +361,13 @@ C.fichierEnt = async el => {
   render(); toast(`${ajoutees} entreprise(s) ajoutée(s), ${liste.length - ajoutees} déjà présente(s)`);
 };
 A.editEnt = el => {
-  const e = S.entreprises.find(x => x.id === el.dataset.id) || { id: '', nom: '', secteur: '', adresse: '', lat: null, lon: null, tel: '', email: '', contact: '', notes: '' };
+  const prop = el.dataset.prop && (S.propositionsEnt || []).find(p => p.id === el.dataset.prop);
+  const e = S.entreprises.find(x => x.id === el.dataset.id) || (prop ? { id: '', nom: prop.nom, secteur: prop.secteur || '', adresse: prop.adresse, lat: null, lon: null, tel: prop.tel, email: '', contact: prop.contact, notes: `Trouvée par ${prop.eleve}` }
+    : { id: '', nom: '', secteur: '', adresse: '', lat: null, lon: null, tel: '', email: '', contact: '', notes: '' });
   modal(`<h2>${e.id ? 'Modifier' : 'Ajouter'} une entreprise</h2><div class="deux"><label>Nom<input id="e_nom" value="${esc(e.nom)}"></label><label>Secteur d’activité<input id="e_secteur" value="${esc(e.secteur)}"></label></div>
     <div style="font-weight:600;font-size:.88rem">Adresse</div>${champGeo('e', e.adresse, e.lat, e.lon)}
     <div class="deux" style="margin-top:12px"><label>Téléphone<input id="e_tel" value="${esc(e.tel)}"></label><label>E-mail<input id="e_email" value="${esc(e.email)}"></label><label>Personne à contacter<input id="e_contact" value="${esc(e.contact)}"></label></div>
-    <label>Notes<textarea id="e_notes" rows="2">${esc(e.notes)}</textarea></label><button class="btn" data-a="sauverEnt" data-id="${e.id}">Enregistrer</button>`);
+    <label>Notes<textarea id="e_notes" rows="2">${esc(e.notes)}</textarea></label><button class="btn" data-a="sauverEnt" data-id="${e.id}" data-prop="${esc(el.dataset.prop || '')}">${el.dataset.prop ? '✅ Valider et ajouter à la base' : 'Enregistrer'}</button>`);
 };
 A.sauverEnt = async el => {
   const ancien = S.entreprises.find(x => x.id === el.dataset.id) || {};   // garde les champs non affichés (activité, site web…)
@@ -373,6 +376,7 @@ A.sauverEnt = async el => {
   if (!n.nom) throw new Error('Indiquez le nom de l’entreprise.');
   await assurerGeo(n);
   await mutCommun('entreprises', l => { const i = l.findIndex(x => x.id === n.id); if (i >= 0) l[i] = n; else l.push(n); });
+  if (el.dataset.prop) await retirerProposition(el.dataset.prop, n);
   modal(''); render(); toast(n.lat == null ? 'Enregistrée, mais adresse non localisée' : 'Entreprise enregistrée', n.lat == null);
 };
 A.supEnt = async el => {
@@ -499,3 +503,61 @@ A.sauverEmail = async () => {
   const u = await api('POST', '/api/moi/email', { email: val('moi_email') });
   S.user.email = u.email || ''; render(); toast(S.user.email ? 'Adresse enregistrée' : 'Adresse supprimée');
 };
+
+/* ---------- Entreprises proposées par les élèves : validation par un professeur ou le DDFPT ---------- */
+async function chargerPropositions() { try { S.propositionsEnt = ((await getDoc('commun/entreprises_proposees')) || {}).liste || []; } catch { S.propositionsEnt = []; } }
+const normaliserNom = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]/g, '');
+function sectionPropositions() {
+  const l = S.propositionsEnt || []; if (!l.length) return '';
+  return `<section class="carte propositions"><h2>🆕 Entreprises proposées par les élèves (${l.length})</h2>
+    <p class="doux petit">Ces entreprises ont été trouvées par des élèves. Vérifiez-les (et localisez l’adresse) avant de les ajouter à la base : elles seront alors proposées aux autres élèves.</p>
+    <div class="table-scroll"><table><tr><th>Entreprise</th><th>Adresse / contact</th><th>Proposée par</th><th></th></tr>
+    ${l.map(p => { const cl = S.classes.find(c => c.id === p.classeId), deja = S.entreprises.find(e => normaliserNom(e.nom) === normaliserNom(p.nom));
+      return `<tr><td><b>${esc(p.nom)}</b>${deja ? `<br><span class="badge" style="background:#b45309">déjà dans la base ?</span> <span class="petit doux">${esc(deja.adresse)}</span>` : ''}</td>
+        <td>${esc(p.adresse || '—')}<br><span class="petit doux">${esc([p.tel, p.contact].filter(Boolean).join(' · '))}</span></td>
+        <td>${esc(p.eleve)}<br><span class="petit doux">${esc(cl ? cl.nom : '')} · ${fmt(p.date)}</span></td>
+        <td style="white-space:nowrap"><button class="btn mini" data-a="editEnt" data-prop="${p.id}">✅ Vérifier et valider</button>
+          <button class="btn mini danger" data-a="refuserProposition" data-id="${p.id}">Refuser</button></td></tr>`; }).join('')}</table></div></section>`;
+}
+// Retire la proposition et, si elle est validée, relie la demande de l'élève à la fiche de la base (carte, secteur…).
+async function retirerProposition(id, entreprise) {
+  const d = (await getDoc('commun/entreprises_proposees')) || { liste: [] };
+  const prop = (d.liste || []).find(p => p.id === id); d.liste = (d.liste || []).filter(p => p.id !== id);
+  await putDoc('commun/entreprises_proposees', d); S.propositionsEnt = d.liste;
+  if (prop && entreprise && prop.eleveId && prop.demandeId) {
+    const k = `eleve/${prop.eleveId}/demandes`, dem = (await getDoc(k)) || { liste: [] }, x = (dem.liste || []).find(y => y.id === prop.demandeId);
+    if (x) { Object.assign(x, { entrepriseId: entreprise.id, secteur: entreprise.secteur || x.secteur || '', adresse: entreprise.adresse || x.adresse, tel: x.tel || entreprise.tel }); await putDoc(k, dem); }
+  }
+  return prop;
+}
+A.refuserProposition = async el => {
+  const p = (S.propositionsEnt || []).find(x => x.id === el.dataset.id);
+  if (!p || !confirm(`Refuser « ${p.nom} » ? Elle restera dans les appels de l’élève, mais ne sera pas ajoutée à la base.`)) return;
+  await retirerProposition(p.id, null); render(); toast('Proposition refusée');
+};
+
+/* ---------- Console DDFPT : vue d'ensemble de toutes les classes ---------- */
+function vueSynthese() {
+  const tout = S.eleves, signees = tout.filter(e => niveau(e.d) === 5).length, urg = urgences().length;
+  const tuiles = [['Classes', S.classes.length, '#3b4cca'], ['Élèves inscrits', tout.length, '#0369a1'], ['Conventions signées', signees, '#16a34a'],
+    ['Plan d’urgence', urg, '#dc2626'], ['Entreprises dans la base', S.entreprises.length, '#7c3aed'], ['Entreprises à valider', (S.propositionsEnt || []).length, '#b45309']];
+  const lignes = S.classes.map(cl => {
+    const els = tout.filter(e => e.d.profil.classeId === cl.id), par = NIV.map((_, n) => els.filter(e => niveau(e.d) === n).length);
+    const periodes = (cl.periodes || []).filter(p => p.debut).sort((a, b) => a.debut.localeCompare(b.debut));
+    const pc = periodeCourante(cl), j = pc ? jours(pc.debut) : null, u = els.filter(e => enUrgence(e.d)).length;
+    return `<tr><td><span class="pastille-classe" style="background:${esc(cl.couleur)}"></span><b>${esc(cl.nom)}</b>${cl.diplome ? `<br><span class="petit doux">${esc(cl.diplome)}</span>` : ''}</td>
+      <td>${esc(nomProf(cl.referentId) || '—')}</td>
+      <td>${periodes.length ? periodes.map(p => `<div class="petit">${esc(p.label || 'PFMP')} : ${fmt(p.debut)} → ${fmt(p.fin)}${pc && p.id === pc.id && j > 0 ? ` <b>(J-${j})</b>` : ''}</div>`).join('') : '<span class="doux">Non fixées</span>'}</td>
+      <td class="centre">${els.length}</td>
+      <td><div class="mini-niveaux">${par.map((n, i) => n ? `<span title="${n} élève(s) : ${NIV[i].l}" style="background:${NIV[i].c};flex:${n}">${n}</span>` : '').join('') || '<span class="vide">aucun élève</span>'}</div>
+        <span class="petit doux">${par[5]}/${els.length} convention(s) signée(s)${u ? ` · <b style="color:#dc2626">${u} en urgence</b>` : ''}</span></td>
+      <td style="white-space:nowrap"><button class="btn mini sec" data-a="voirClasse" data-id="${cl.id}">Voir les élèves</button>
+        <button class="btn mini sec" data-a="aller" data-v="classes">Dates</button></td></tr>`;
+  }).join('');
+  return `<div class="stats">${tuiles.map(([l, n, c]) => `<div class="stat" style="--c:${c}"><b>${n}</b><span>${l}</span></div>`).join('')}</div>
+    <section class="carte"><h2>🏫 Toutes les classes (${S.classes.length})</h2>
+      ${S.classes.length ? `<div class="table-scroll"><table class="synthese"><tr><th>Classe</th><th>Référent</th><th>Périodes de PFMP</th><th>Élèves</th><th>Avancement (niveaux 0 à 5)</th><th></th></tr>${lignes}</table></div>`
+        : '<p>Aucune classe pour le moment. Créez-les dans « Classes et dates PFMP ».</p>'}
+      <div class="actions"><button class="btn" data-a="aller" data-v="classes">📅 Gérer les classes et les dates de PFMP</button><button class="btn sec" data-a="aller" data-v="entreprises">🏢 Gérer la base d’entreprises</button></div></section>`;
+}
+A.voirClasse = el => { S.f.classe = el.dataset.id; S.f.niveau = ''; S.f.q = ''; S.f.urg = false; S.vue = 'tableau'; render(); window.scrollTo(0, 0); };

@@ -27,7 +27,7 @@ const ERR = {
   identifiant_invalide: 'Identifiant : 3 à 40 caractères (lettres sans accent, chiffres, point, tiret).',
   motdepasse_court: 'Le mot de passe doit contenir au moins 6 caractères.', code_prof: 'Code professeur incorrect.',
   classe_requise: 'Choisis ta classe.', nom_requis: 'Nom et prénom sont obligatoires.', interdit: 'Action non autorisée.',
-  code_eleve: 'Code d’inscription élève incorrect : demande-le à ton professeur.', code_chef: 'Code « chef d’établissement » incorrect.', convention_deja_signee: 'Cette convention a déjà été signée : elle ne peut plus être recréée. Demande à ton professeur référent de l’annuler si elle doit être corrigée.', convention_introuvable: 'Convention introuvable (elle a peut-être été annulée).', convention_indisponible: 'Les conventions ne sont disponibles qu’avec la version Google de l’application.', pas_lecteur: 'Votre compte ne permet pas d’ouvrir cette convention.', nom_initiales: 'Pour le nom, indique seulement les 2 premières lettres.', referent_sans_email: 'Ton professeur référent n’a pas encore indiqué son adresse e-mail dans l’application.', pas_de_referent: 'Aucun professeur référent n’est désigné pour ta classe.', envoi_impossible: 'L’e-mail n’a pas pu être envoyé (service de messagerie indisponible).', envoi_indisponible: 'L’envoi par e-mail n’est pas disponible avec ce serveur.', email_invalide: 'Adresse e-mail invalide.', trop_gros: 'Fichier trop volumineux.', trop_essais: 'Trop de tentatives. Réessaie dans quelques minutes.',
+  code_eleve: 'Code d’inscription élève incorrect : demande-le à ton professeur.', code_ddfpt: 'Code DDFPT incorrect.', code_chef: 'Code « chef d’établissement » incorrect.', convention_deja_signee: 'Cette convention a déjà été signée : elle ne peut plus être recréée. Demande à ton professeur référent de l’annuler si elle doit être corrigée.', convention_introuvable: 'Convention introuvable (elle a peut-être été annulée).', convention_indisponible: 'Les conventions ne sont disponibles qu’avec la version Google de l’application.', pas_lecteur: 'Votre compte ne permet pas d’ouvrir cette convention.', nom_initiales: 'Pour le nom, indique seulement les 2 premières lettres.', referent_sans_email: 'Ton professeur référent n’a pas encore indiqué son adresse e-mail dans l’application.', pas_de_referent: 'Aucun professeur référent n’est désigné pour ta classe.', envoi_impossible: 'L’e-mail n’a pas pu être envoyé (service de messagerie indisponible).', envoi_indisponible: 'L’envoi par e-mail n’est pas disponible avec ce serveur.', email_invalide: 'Adresse e-mail invalide.', trop_gros: 'Fichier trop volumineux.', trop_essais: 'Trop de tentatives. Réessaie dans quelques minutes.',
   non_connecte: 'Session expirée, reconnecte-toi.', introuvable: 'Élément introuvable.',
 };
 const NIV = [
@@ -203,25 +203,28 @@ A.deconnexion = async () => { try { await api('POST', '/api/deconnexion'); } cat
 function render() {
   const app = $('#app');
   if (!S.user) { app.innerHTML = vueAuth(); return; }
-  const prof = S.user.role === 'prof';
+  const prof = S.user.role !== 'eleve';   // personnel : professeur ou DDFPT
   if (carte) { carte.remove(); carte = null; }
   if (typeof fermerCarteProf === 'function') fermerCarteProf();
   app.innerHTML = entete(prof) + `<main>${prof ? vueProf() : vueEleve()}</main>` + (prof && S.dossier ? vueDossier() : '');
   if (!prof && S.vue === 'entreprises') afficherCarte();
-  if (!prof && S.vue === 'protocole' && typeof majTotaux === 'function') majTotaux();
+  if (!prof && S.vue === 'protocole' && typeof majTotaux === 'function') { majTotaux(); initPadProtocole(); }
   if (prof && S.vue === 'carte' && !S.dossier) afficherCarteProf();
 }
 function entete(prof) {
   let nav;
   if (prof) {
     const nu = urgences().filter(e => !e.d.prof.urgence).length + protocolesAValider().filter(({ e }) => estReferentDe(e)).length;
-    nav = [['tableau', '📊 Tableau de bord'], ['alertes', '🔔 Alertes', nu], ['carte', '🗺️ Carte'], ['classes', '📅 Classes et dates'], ['entreprises', '🏢 Entreprises']];
+    const np = (S.propositionsEnt || []).length;
+    nav = S.user.role === 'ddfpt'
+      ? [['synthese', '🏫 Vue d’ensemble'], ['tableau', '📊 Élèves'], ['classes', '📅 Classes et dates PFMP'], ['entreprises', '🏢 Entreprises', np], ['carte', '🗺️ Carte'], ['alertes', '🔔 Alertes', nu]]
+      : [['tableau', '📊 Tableau de bord'], ['alertes', '🔔 Alertes', nu], ['carte', '🗺️ Carte'], ['classes', '📅 Classes et dates'], ['entreprises', '🏢 Entreprises', np]];
   } else {
     const d = S.el, nl = d.prof.conseils.filter(c => !d.etat.conseilsLus.includes(c.id)).length;
     nav = [['accueil', '🏠 Accueil', nl], ['profil', '👤 Mon profil'], ['entreprises', '🏢 Entreprises'], ['suivi', '📞 Mes appels', relancesDues(d).length],
       ['memento', '📝 Memento'], ['cv', '📄 CV'], ['lettre', '✉️ Lettre'], ['protocole', '🤝 Protocole']];
   }
-  return `<header class="top"><div class="logo">🎓 Suivi des stages${prof ? ' · Console professeur' : ''}</div>
+  return `<header class="top"><div class="logo">🎓 Suivi des stages${prof ? (S.user.role === 'ddfpt' ? ' · Console DDFPT' : ' · Console professeur') : ''}</div>
     <nav>${nav.map(([v, l, n]) => `<button data-a="aller" data-v="${v}" class="${S.vue === v ? 'actif' : ''}">${l}${n ? `<span class="pastille">${n}</span>` : ''}</button>`).join('')}</nav>
     <div class="qui"><span>${esc(nomComplet(S.user))}</span><button data-a="deconnexion">Déconnexion</button></div></header>`;
 }
@@ -237,12 +240,13 @@ function vueAuth() {
     ${t === 'eleve' && S.codeEleveRequis ? `<label>Code d’inscription élève <span class="doux petit">(donné par ton professeur)</span><input id="a_codeEleve" autocomplete="off"></label>` : ''}
     ${t === 'eleve' ? (S.pubClasses.length ? `<label>Classe<select id="a_classe"><option value="">— Choisir —</option>${S.pubClasses.map(c => `<option value="${c.id}">${esc(c.nom)}</option>`).join('')}</select></label>`
       : `<div class="alerte attention">Aucune classe n’a encore été créée. Demande à ton professeur de créer ta classe avant de t’inscrire.</div>`)
+      : t === 'ddfpt' ? `<label>Code DDFPT <span class="doux petit">${API_GOOGLE ? '(dans Google Apps Script : Paramètres du projet › Propriétés du script › CODE_DDFPT)' : '(affiché au démarrage du serveur)'}</span><input id="a_codeDdfpt" autocomplete="off"></label>`
       : `<label>Code professeur <span class="doux petit">${API_GOOGLE ? '(dans Google Apps Script : Paramètres du projet › Propriétés du script › CODE_PROF)' : '(affiché au démarrage du serveur)'}</span><input id="a_code" autocomplete="off"></label>`}
     <label>Identifiant de connexion <span class="doux petit">(ex. prenom.nom)</span><input id="a_id" autocomplete="username"></label>
     <label>Mot de passe <span class="doux petit">(6 caractères minimum)</span><input id="a_pw" type="password" autocomplete="new-password"></label>
     <button class="btn" data-a="inscription">Créer mon compte</button>`;
   return `<div class="auth"><h1 style="text-align:center">🎓 Suivi des stages</h1><p class="doux" style="text-align:center">Trouver son stage, étape par étape.</p>
-    <div class="carte"><div class="tabs">${tab('connexion', 'Connexion')}${tab('eleve', 'Inscription élève')}${tab('prof', 'Inscription professeur')}</div>${corps}</div><div class="zone-installer" style="text-align:center">${blocInstaller()}</div></div>`;
+    <div class="carte"><div class="tabs">${tab('connexion', 'Connexion')}${tab('eleve', 'Inscription élève')}${tab('prof', 'Inscription professeur')}${tab('ddfpt', 'Inscription DDFPT')}</div>${corps}</div><div class="zone-installer" style="text-align:center">${blocInstaller()}</div></div>`;
 }
 A.auth = el => { S.auth = el.dataset.t; render(); };
 // À la connexion, la clé personnelle de l'élève (pour rouvrir sa convention chiffrée) est dérivée de son mot de passe.
@@ -252,7 +256,7 @@ A.connexion = async () => {
 };
 A.inscription = async () => {
   const mdp = $('#a_pw').value, r = await api('POST', '/api/inscription', {
-    role: S.auth, prenom: val('a_prenom'), nom: S.auth === 'eleve' ? initiales(val('a_nom')) : val('a_nom'), identifiant: val('a_id'), motdepasse: mdp, classeId: val('a_classe'), codeProf: val('a_code'), codeEleve: val('a_codeEleve'),
+    role: S.auth, prenom: val('a_prenom'), nom: S.auth === 'eleve' ? initiales(val('a_nom')) : val('a_nom'), identifiant: val('a_id'), motdepasse: mdp, classeId: val('a_classe'), codeProf: val('a_code'), codeDdfpt: val('a_codeDdfpt'), codeEleve: val('a_codeEleve'),
   });
   await memoriserCle(r.user, mdp, r.user.identifiant); return ouvrirSession(r);
 };
@@ -271,7 +275,7 @@ async function chargerCommun() {
 }
 async function charger() {
   await chargerCommun();
-  if (S.user.role === 'prof') { await chargerEleves(); S.vue = S.vue || 'tableau'; return; }
+  if (S.user.role !== 'eleve') { await chargerEleves(); S.vue = S.vue || (S.user.role === 'ddfpt' ? 'synthese' : 'tableau'); return; }
   const docs = {};
   await Promise.all(Object.keys(DEF).map(async k => { docs[k] = await getDoc(`eleve/${S.user.id}/${k}`); }));
   S.el = normaliser(docs);
@@ -509,11 +513,16 @@ A.ajouterSelection = async () => {
   S.vue = 'suivi'; render(); toast('Entreprises ajoutées à tes appels');
 };
 A.ajoutManuel = () => modal(`<h2>Ajouter une entreprise trouvée par moi-même</h2><label>Nom de l’entreprise<input id="m_nom"></label><label>Adresse<input id="m_adresse"></label>
-  <div class="deux"><label>Téléphone<input id="m_tel"></label><label>Personne à contacter<input id="m_contact"></label></div><button class="btn" data-a="sauverManuel">Ajouter à mes appels</button>`);
+  <div class="deux"><label>Téléphone<input id="m_tel"></label><label>Personne à contacter<input id="m_contact"></label></div>
+  <p class="doux petit">Elle est ajoutée à tes appels tout de suite, et proposée pour la base d’entreprises du lycée : un professeur ou le DDFPT la vérifiera avant qu’elle soit proposée aux autres élèves.</p>
+  <button class="btn" data-a="sauverManuel">Ajouter à mes appels</button>`);
 A.sauverManuel = async () => {
   if (!val('m_nom')) throw new Error('Indique le nom de l’entreprise.');
-  S.el.demandes.liste.push(nouvelleDemande({ nom: val('m_nom'), adresse: val('m_adresse'), tel: val('m_tel'), contact: val('m_contact') }));
-  await sauver('demandes'); journal(`Entreprise ajoutée par l’élève : ${val('m_nom')}`); modal(''); S.vue = 'suivi'; render();
+  const e = { nom: val('m_nom'), adresse: val('m_adresse'), tel: val('m_tel'), contact: val('m_contact') }, dem = nouvelleDemande(e);
+  S.el.demandes.liste.push(dem);
+  try { dem.propositionId = (await api('POST', '/api/entreprises/proposer', { ...e, demandeId: dem.id })).id; } catch { /* serveur sans cette fonction : ajout aux appels seulement */ }
+  await sauver('demandes'); journal(`Entreprise ajoutée par l’élève : ${e.nom}${dem.propositionId ? ' (proposée pour la base)' : ''}`); modal(''); S.vue = 'suivi'; render();
+  toast(dem.propositionId ? 'Ajoutée à tes appels et proposée pour la base du lycée' : 'Ajoutée à tes appels');
 };
 
 /* --- Suivi des appels --- */
@@ -642,7 +651,7 @@ document.addEventListener('keydown', ev => {
 setInterval(async () => {
   if (!S.user || $('#modal').innerHTML || S.dossier || document.hidden) return;
   try {
-    if (S.user.role === 'prof') { if (S.vue === 'tableau') { await chargerEleves(); majListe(); } }
+    if (S.user.role !== 'eleve') { if (S.vue === 'tableau') { await chargerEleves(); majListe(); } }
     else if (S.vue === 'accueil') {
       await chargerCommun(); S.el.prof = Object.assign(DEF.prof(), await getDoc(`eleve/${S.user.id}/prof`) || {});
       if (S.vue === 'accueil' && !$('#modal').innerHTML) render();

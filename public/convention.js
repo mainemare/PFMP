@@ -7,7 +7,7 @@
 S.convs = []; S.conventions = []; S.etab = { ...CONV.ETAB_DEFAUT };
 const etabCourant = () => ({ ...CONV.ETAB_DEFAUT, ...(S.etab || {}) });
 async function chargerConventions() {
-  try { const l = await api('GET', '/api/conventions'); if (S.user.role === 'prof') S.conventions = l || []; else S.convs = l || []; }
+  try { const l = await api('GET', '/api/conventions'); if (S.user.role !== 'eleve') S.conventions = l || []; else S.convs = l || []; }
   catch { S.convs = []; S.conventions = []; }   // fonction absente sur ce serveur
 }
 async function chargerEtab() { try { S.etab = { ...CONV.ETAB_DEFAUT, ...((await getDoc('commun/etablissement')) || {}) }; } catch { S.etab = { ...CONV.ETAB_DEFAUT }; } }

@@ -1,7 +1,7 @@
 'use strict';
 // Suivi des stages - serveur pour hebergement en ligne (Node.js 18+, aucune dependance).
 // Lancement : node server.js
-// Variables d'environnement : PORT, DATA_DIR (dossier persistant), CODE_PROF, CODE_ELEVE.
+// Variables d'environnement : PORT, DATA_DIR (dossier persistant), CODE_PROF, CODE_ELEVE, CODE_DDFPT.
 const http = require('http'), fs = require('fs'), path = require('path'), crypto = require('crypto');
 
 const PORT = +process.env.PORT || 8080;
@@ -31,15 +31,17 @@ if (fs.existsSync(CONFIG_FILE)) config = JSON.parse(lire(CONFIG_FILE));
 let configModifiee = false;
 if (!config.codeProf) { config.codeProf = 'PROF-' + hex(3).toUpperCase(); configModifiee = true; }
 if (!config.codeEleve) { config.codeEleve = 'ELEVE-' + hex(3).toUpperCase(); configModifiee = true; }
+if (!config.codeDdfpt) { config.codeDdfpt = 'DDFPT-' + hex(4).toUpperCase(); configModifiee = true; }
 if (!config.secret) { config.secret = hex(32); configModifiee = true; }
 if (configModifiee) ecrire(CONFIG_FILE, JSON.stringify(config));
 const CODE_PROF = process.env.CODE_PROF || config.codeProf;
 const CODE_ELEVE = process.env.CODE_ELEVE || config.codeEleve;
+const CODE_DDFPT = process.env.CODE_DDFPT || config.codeDdfpt;
 
 // ---------- Comptes ----------
 let users = fs.existsSync(USERS_FILE) ? JSON.parse(lire(USERS_FILE)) : [];
 const sauverUsers = () => ecrire(USERS_FILE, JSON.stringify(users));
-const userJson = u => JSON.stringify({ id: u.id, role: u.role, nom: u.nom, prenom: u.prenom, identifiant: u.identifiant, classeId: u.classeId || null, email: u.role === 'prof' ? (u.email || '') : undefined });
+const userJson = u => JSON.stringify({ id: u.id, role: u.role, nom: u.nom, prenom: u.prenom, identifiant: u.identifiant, classeId: u.classeId || null, email: u.role !== 'eleve' ? (u.email || '') : undefined });
 
 // ---------- Sessions : jetons signes, valables 12 h, qui survivent a un redemarrage ----------
 const signer = corps => crypto.createHmac('sha256', config.secret).update(corps).digest('base64url');
@@ -130,13 +132,15 @@ async function traiter(req, res) {
     const b = await lireJson(req);
     const nom = String(b.nom || '').trim(), prenom = String(b.prenom || '').trim(), ident = String(b.identifiant || '').trim().toLowerCase();
     const mdp = String(b.motdepasse || ''), role = b.role;
-    if (role !== 'eleve' && role !== 'prof') return erreur(req, res, 400, 'invalide');
+    if (!['eleve', 'prof', 'ddfpt'].includes(role)) return erreur(req, res, 400, 'invalide');
     if (!nom || !prenom || nom.length > 60 || prenom.length > 60) return erreur(req, res, 400, 'nom_requis');
     if (!/^[a-z0-9._-]{3,40}$/.test(ident)) return erreur(req, res, 400, 'identifiant_invalide');
     if (mdp.length < 6 || mdp.length > 200) return erreur(req, res, 400, 'motdepasse_court');
     let classeId = null;
     if (role === 'prof') {
       if (String(b.codeProf || '').trim() !== CODE_PROF) return erreur(req, res, 403, 'code_prof');
+    } else if (role === 'ddfpt') {
+      if (String(b.codeDdfpt || '').trim().toUpperCase() !== CODE_DDFPT.toUpperCase()) return erreur(req, res, 403, 'code_ddfpt');
     } else {
       if (String(b.codeEleve || '').trim().toUpperCase() !== CODE_ELEVE.toUpperCase()) return erreur(req, res, 403, 'code_eleve');
       classeId = String(b.classeId || '');
@@ -160,7 +164,19 @@ async function traiter(req, res) {
   const auth = req.headers.authorization || '';
   const user = auth.startsWith('Bearer ') ? lireJeton(auth.slice(7)) : null;
   if (!user) return erreur(req, res, 401, 'non_connecte');
-  const estProf = user.role === 'prof';
+  const estProf = user.role === 'prof' || user.role === 'ddfpt';   // personnel : professeurs et DDFPT
+
+  // Eleve : entreprise trouvee par lui-meme, proposee pour la base (validation par un prof ou le DDFPT).
+  if (route === 'POST /api/entreprises/proposer') {
+    if (user.role !== 'eleve') return erreur(req, res, 403, 'interdit');
+    const b = await lireJson(req), champ = (k, n) => String(b[k] || '').trim().slice(0, n);
+    const e = { id: hex(6), nom: champ('nom', 120), adresse: champ('adresse', 200), tel: champ('tel', 40), contact: champ('contact', 120), secteur: champ('secteur', 80),
+      demandeId: champ('demandeId', 40), eleveId: user.id, eleve: `${user.prenom} ${user.nom}`, classeId: user.classeId || '', date: new Date().toISOString() };
+    if (!e.nom) return erreur(req, res, 400, 'invalide');
+    const d = JSON.parse(getDoc('commun/entreprises_proposees')) || { liste: [] };
+    d.liste.push(e); setDoc('commun/entreprises_proposees', JSON.stringify(d));
+    return envoyer(req, res, 200, JSON.stringify({ id: e.id }));
+  }
 
   if (route === 'GET /api/moi') return envoyer(req, res, 200, userJson(user));
   if (route === 'POST /api/moi/email') {
@@ -208,7 +224,8 @@ async function traiter(req, res) {
     const cle = chemin.slice(9);
     let ecriture;
     const me = /^eleve\/([a-f0-9]{12})\/([a-z]+)$/.exec(cle);
-    if (/^commun\/(classes|entreprises)$/.test(cle)) ecriture = estProf;
+    if (/^commun\/(classes|entreprises|etablissement)$/.test(cle)) ecriture = estProf;
+    else if (cle === 'commun/entreprises_proposees') { if (!estProf) return erreur(req, res, 403, 'interdit'); ecriture = true; }
     else if (me && SECTIONS.includes(me[2])) {
       if (!estProf && user.id !== me[1]) return erreur(req, res, 403, 'interdit');
       if (!users.some(u => u.id === me[1])) return erreur(req, res, 404, 'introuvable');
@@ -237,4 +254,5 @@ http.createServer((req, res) => {
   console.log(`Donnees : ${DATA}`);
   console.log(`Code d'inscription des professeurs : ${CODE_PROF}`);
   console.log(`Code d'inscription des eleves      : ${CODE_ELEVE}`);
+  console.log(`Code d'inscription du DDFPT        : ${CODE_DDFPT}`);
 });

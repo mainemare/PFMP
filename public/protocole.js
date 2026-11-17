@@ -61,7 +61,8 @@ function initProtocole(demandeId) {
   // Journée type : reprise du lundi s'il est déjà rempli ; jours cochés par défaut : du lundi au vendredi.
   const type = Object.fromEntries(['matin_de', 'matin_a', 'apresmidi_de', 'apresmidi_a'].map(k => [k, horaires['lundi_' + k] || '']));
   const jours = sauve.jours || { lundi: true, mardi: true, mercredi: true, jeudi: true, vendredi: true, samedi: false };
-  PROTO = { demandeId: dem ? dem.id : '', eleve, ent, signElec: sauve.signElec || '', horaires, type, jours };
+  const sigEnt = PROTO && PROTO.demandeId === (dem ? dem.id : '') ? PROTO.sigEnt : { img: '', cachet: '', mode: 'pad' };
+  PROTO = { demandeId: dem ? dem.id : '', eleve, ent, signElec: sauve.signElec || '', horaires, type, jours, sigEnt };
 }
 function lireFormulaire() {
   for (const [k] of CHAMPS_ELEVE) PROTO.eleve[k] = val('pe_' + k);
@@ -109,7 +110,8 @@ function vueProtocole() {
       ${JOURS.map(([j, l]) => `<tr><th>${l}</th><td class="centre"><input type="checkbox" class="pj" value="${j}" ${P.jours[j] ? 'checked' : ''} aria-label="${l} : mêmes horaires que la journée type"></td>
         <td>${heure(`ph_${j}_matin_de`)}</td><td>${heure(`ph_${j}_matin_a`)}</td><td>${heure(`ph_${j}_apresmidi_de`)}</td><td>${heure(`ph_${j}_apresmidi_a`)}</td><td class="total" id="ptot_${j}"></td></tr>`).join('')}</table></div>
     <div id="totalSemaine" class="total-semaine" role="status" aria-live="polite"></div>
-    <p class="doux petit">Moins de 15 ans : 7 h/jour et 30 h/semaine au maximum. 15 ans et plus : 8 h/jour et 35 h/semaine. Élève mineur : 2 jours de repos consécutifs.</p></section>
+    <p class="doux petit">Moins de 15 ans : 7 h/jour et 30 h/semaine au maximum. 15 ans et plus : 8 h/jour et 35 h/semaine. Élève mineur : 2 jours de repos consécutifs.</p>
+    ${blocSignatureEntreprise()}</section>
   <section class="carte"><div class="actions">
     <button class="btn" data-a="protoApercu">👁️ Aperçu et impression</button>
     <button class="btn sec" data-a="protoTelecharger">⬇️ Télécharger le PDF</button>
@@ -162,6 +164,15 @@ async function fabriquerPdf() {
       ecrire(String(+h), c[i], y, 16, { centre: true, taille: 9 });
       ecrire(m || '00', c[i + 1], y, 18, { centre: true, taille: 9 });
     });
+  }
+  // Signature et cachet de l'entreprise, sous « Signature et cachet de l'entreprise : » (colonne de gauche).
+  const images = [PROTO.sigEnt && PROTO.sigEnt.img, PROTO.sigEnt && PROTO.sigEnt.cachet].filter(Boolean);
+  const zone = { x: 42, y: 160, w: 226, h: 62 };
+  for (let k = 0; k < images.length; k++) {
+    const url = images[k], octets = Uint8Array.from(atob(url.slice(url.indexOf(',') + 1)), c => c.charCodeAt(0));
+    const img = url.startsWith('data:image/png') ? await doc.embedPng(octets) : await doc.embedJpg(octets);
+    const bw = images.length > 1 ? zone.w / 2 - 4 : zone.w, sc = Math.min(bw / img.width, zone.h / img.height);
+    page.drawImage(img, { x: zone.x + k * (zone.w / 2 + 4) + (bw - img.width * sc) / 2, y: zone.y + (zone.h - img.height * sc) / 2, width: img.width * sc, height: img.height * sc });
   }
   doc.setTitle(`Protocole d'accord - ${PROTO.eleve.prenom} ${PROTO.eleve.nom}`.trim()); doc.setCreator('Suivi des stages');
   return doc.save();
@@ -292,3 +303,32 @@ document.addEventListener('change', ev => {   // la case « tous » suit l'état
   if (!ev.target.classList || !ev.target.classList.contains('pj')) return;
   const tous = $('[data-c="protoTousJours"]'); if (tous) tous.checked = $$('.pj').every(c => c.checked);
 });
+
+/* ---------- Signature et cachet de l'entreprise sur le protocole ---------- */
+function blocSignatureEntreprise() {
+  const s = PROTO.sigEnt || {};
+  return `<h3 style="margin-top:16px">✍️ Signature et cachet de l’entreprise</h3>
+    <p class="doux petit">À faire avec la personne de l’entreprise avant l’envoi au professeur : elle signe directement sur l’écran, ou tu prends en photo sa signature et le tampon de l’entreprise. Ils apparaîtront sur le PDF dans la case « Signature et cachet de l’entreprise ».</p>
+    <div class="onglets"><button type="button" class="${s.mode !== 'photo' ? 'actif' : ''}" data-a="protoSigMode" data-m="pad">✍️ Signer sur l’écran</button>
+      <button type="button" class="${s.mode === 'photo' ? 'actif' : ''}" data-a="protoSigMode" data-m="photo">📷 Photo de la signature</button></div>
+    ${s.img ? `<img class="apercu-img" src="${s.img}" alt="Signature de l’entreprise"><button type="button" class="btn mini sec" data-a="protoSigRefaire">Refaire la signature</button>`
+      : s.mode === 'photo' ? '<input type="file" accept="image/*" capture="environment" data-c="protoSigPhoto" aria-label="Photo de la signature">'
+      : '<canvas id="protoPad" class="pad-signature" aria-label="Signature de l’entreprise"></canvas><div class="actions"><button type="button" class="btn mini" data-a="protoSigValider">Valider la signature</button><button type="button" class="btn mini sec" data-a="protoSigEffacer">Effacer</button></div>'}
+    <h4 class="petit" style="margin:14px 0 4px">Tampon (cachet) de l’entreprise <span class="doux">(photo, facultatif)</span></h4>
+    ${s.cachet ? `<img class="apercu-img" src="${s.cachet}" alt="Cachet de l’entreprise"><button type="button" class="btn mini sec" data-a="protoCachetRetirer">Retirer le cachet</button>`
+      : '<input type="file" accept="image/*" capture="environment" data-c="protoCachetPhoto" aria-label="Photo du cachet">'}
+    <p class="doux petit">🔒 La signature et le cachet ne sont pas enregistrés dans l’application : ils sont seulement ajoutés au PDF.</p>`;
+}
+let padProtocole = null;
+function initPadProtocole() { const c = $('#protoPad'); padProtocole = c ? CONV.padSignature(c) : null; }
+const majProto = () => { lireFormulaire(); render(); };
+A.protoSigMode = el => { PROTO.sigEnt.mode = el.dataset.m; majProto(); };
+A.protoSigEffacer = () => { if (padProtocole) padProtocole.effacer(); };
+A.protoSigValider = () => {
+  if (!padProtocole || padProtocole.vide()) throw new Error('La personne de l’entreprise doit d’abord signer dans le cadre.');
+  PROTO.sigEnt.img = padProtocole.image(); majProto(); toast('Signature ajoutée au protocole');
+};
+A.protoSigRefaire = () => { PROTO.sigEnt.img = ''; majProto(); };
+A.protoCachetRetirer = () => { PROTO.sigEnt.cachet = ''; majProto(); };
+C.protoSigPhoto = async el => { PROTO.sigEnt.img = await CONV.photoEnImage(el.files[0]); majProto(); toast('Photo de la signature ajoutée'); };
+C.protoCachetPhoto = async el => { PROTO.sigEnt.cachet = await CONV.photoEnImage(el.files[0]); majProto(); toast('Cachet ajouté'); };

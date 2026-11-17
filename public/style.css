@@ -226,3 +226,11 @@ table.horaires td.total { font-weight: 700; text-align: center; white-space: now
 table.horaires td.total.depasse { color: #b91c1c; background: #fee2e2; }
 .total-semaine { margin: 10px 0 4px; padding: 10px 14px; border-radius: 10px; background: #eef1f8; border-left: 5px solid #94a3b8; }
 .total-semaine.ok { background: #e3f7ea; border-color: #16a34a; } .total-semaine.depasse { background: #fee2e2; border-color: #dc2626; }
+
+/* Console DDFPT */
+.pastille-classe { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 8px; vertical-align: -1px; }
+table.synthese td { vertical-align: middle; } table.synthese td.centre { text-align: center; font-weight: 700; }
+.mini-niveaux { display: flex; height: 18px; border-radius: 6px; overflow: hidden; min-width: 160px; background: #eef1f8; margin-bottom: 3px; }
+.mini-niveaux span { color: #fff; font-size: .72rem; font-weight: 700; display: flex; align-items: center; justify-content: center; min-width: 16px; }
+.mini-niveaux span.vide { color: var(--doux); flex: 1; font-weight: 400; }
+.carte.propositions { border-left: 6px solid #b45309; }

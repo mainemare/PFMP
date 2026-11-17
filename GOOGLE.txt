@@ -110,3 +110,18 @@ Limites
   Valeur juridique : il s'agit d'une signature electronique « simple » (lien + code ou compte, date et heure
   enregistrees). Faites valider ce mode de signature par le chef d'etablissement avant de l'ouvrir aux familles
   et aux entreprises. Les conventions restent imprimables pour une signature manuscrite si besoin.
+
+7. COMPTE DDFPT ET BASE D'ENTREPRISES
+  Ou est la base d'entreprises ? Dans le classeur Google (onglet "donnees", ligne commun/entreprises), sur le compte
+  Google proprietaire du script. Elle n'est pas sur GitHub.
+  Compte DDFPT :
+  - Apres la mise a jour de Code.gs, executez "installer" ou "autoriser" : le journal affiche le CODE D'INSCRIPTION DU
+    DDFPT (Proprietes du script > CODE_DDFPT). Sur le site : onglet "Inscription DDFPT", avec ce code.
+  - Console DDFPT : vue d'ensemble de toutes les classes (periodes de PFMP, eleves, avancement, urgences),
+    eleves, classes et dates de PFMP, base d'entreprises, carte, alertes. Le DDFPT a les memes droits que les professeurs.
+  Entreprises trouvees par les eleves :
+  - Quand un eleve ajoute une entreprise lui-meme, elle va dans ses appels et dans une liste "a valider".
+  - Un professeur ou le DDFPT la verifie (Entreprises > "Entreprises proposees par les eleves"), localise l'adresse
+    et la valide : elle entre alors dans la base et sera proposee aux autres eleves. Ou il la refuse.
+  Protocole d'accord : la personne de l'entreprise peut signer sur l'ecran de l'eleve, ou l'eleve photographie sa
+  signature et le tampon ; ils sont places dans la case "Signature et cachet de l'entreprise" du PDF (non enregistres).
