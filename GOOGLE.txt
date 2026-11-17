@@ -8,8 +8,8 @@ Principe
     Google Apps Script (fichier google/Code.gs). Aucun serveur a faire tourner.
   - Donnees minimales : prenom, 2 premieres lettres du nom, classe, communes de residence,
     suivi des appels et memento. Pas d'e-mail, pas de telephone, pas d'adresse d'eleve.
-  - CV et lettres de motivation : en PDF dans l'espace documentaire de L'Educ de Normandie (ENT),
-    partages avec le professeur. L'application ne garde que la date de depot et le retour du professeur.
+  - CV et lettres de motivation : deposes en PDF par l'eleve dans l'application, ranges dans un dossier prive
+    de votre Google Drive (jamais partage), annotes par le professeur dans l'application (voir section 8).
   - Les eleves n'ont pas besoin de compte Google : ils se connectent avec l'identifiant de l'application.
 
 1. CREER LE CLASSEUR (une seule fois)
@@ -125,3 +125,18 @@ Limites
     et la valide : elle entre alors dans la base et sera proposee aux autres eleves. Ou il la refuse.
   Protocole d'accord : la personne de l'entreprise peut signer sur l'ecran de l'eleve, ou l'eleve photographie sa
   signature et le tampon ; ils sont places dans la case "Signature et cachet de l'entreprise" du PDF (non enregistres).
+
+8. CV ET LETTRES DE MOTIVATION EN PDF, ANNOTES DANS L'APPLICATION
+  - L'eleve depose son CV et sa lettre en PDF (4 Mo maximum) dans les pages CV et Lettre. Une nouvelle version
+    remplace l'ancienne ; le professeur referent voit le document « a relire ».
+  - Les fichiers sont ranges dans le dossier Drive « Suivi des stages - CV et lettres (prive, ne pas partager) »,
+    cree automatiquement. Ne le partagez pas : seuls les professeurs et le DDFPT les ouvrent, via l'application.
+  - Professeur : dossier de l'eleve > onglet CV ou Lettre > « Ouvrir et annoter ». Outils : remarque numerotee
+    (touchez le document a l'endroit voulu puis ecrivez), surligneur, stylo rouge, gomme, annuler. « Enregistrer » :
+    l'eleve voit les annotations sur son document. Les annotations sont gardees a part : le PDF n'est pas modifie.
+  - Un nouveau depot efface les annotations de la version precedente. Supprimer le compte d'un eleve met ses
+    fichiers a la corbeille du Drive.
+  Mise en place : mettez a jour Code.gs, executez « autoriser » (le journal affiche le dossier des CV et lettres),
+  puis Deployer > Gerer les deploiements > (crayon) > Nouvelle version.
+  Donnees : un CV contient souvent l'adresse, le telephone et l'e-mail de l'eleve. Ils restent dans votre Drive
+  personnel de travail ; pensez a supprimer les comptes (et donc les fichiers) en fin d'annee, et videz la corbeille du Drive.

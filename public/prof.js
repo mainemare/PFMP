@@ -173,9 +173,12 @@ function dosDoc(e, t) {
   const doc = e.d[t], memento = t === 'memento';
   const intro = memento
     ? (doc.majLe ? `Dernière modification par l’élève : ${fmtDT(doc.majLe)}.` : 'L’élève n’a pas encore travaillé son memento.') + ' Vous pouvez corriger directement le texte et laisser un commentaire.'
-    : (doc.deposeLe ? `📄 Déposé par l’élève dans son <b>espace documentaire de l’ENT</b> le ${fmtDT(doc.deposeLe)}. Ouvrez-le depuis l’ENT (fichiers partagés avec vous), annotez-le si besoin, puis indiquez ici votre retour.`
-      : 'L’élève n’a pas encore signalé de dépôt sur l’ENT.');
+    : doc.fichierLe ? `📄 PDF déposé par l’élève le ${fmtDT(doc.fichierLe)}${doc.taille ? ` (${tailleLisible(doc.taille)})` : ''}. Ouvrez-le pour l’annoter : remarques numérotées, surligneur, stylo. L’élève voit vos annotations sur son document.`
+      : doc.deposeLe ? `Dépôt sur l’ENT signalé le ${fmtDT(doc.deposeLe)} (ancienne méthode). L’élève peut maintenant déposer son PDF directement dans l’application.`
+      : 'L’élève n’a pas encore déposé son document.';
+  const nb = nbAnnotations(doc);
   return `<p class="doux">${intro}</p>
+    ${!memento && doc.fichierLe ? `<div class="actions" style="margin-top:0"><button class="btn" data-a="annoterFichier" data-t="${t}">✏️ Ouvrir et annoter</button>${nb ? `<span class="petit doux">${nb} annotation${nb > 1 ? 's' : ''} · ${esc(doc.annotations.par)}, ${fmtDT(doc.annotations.date)}</span>` : ''}</div>` : ''}
     ${blocCorrection(doc)}${memento ? formDoc(t, doc) : ''}
     <label>Commentaire pour l’élève<textarea id="f_commentaire" rows="3">${esc(doc.correction ? doc.correction.commentaire : '')}</textarea></label>
     <label><input type="checkbox" id="f_valide" ${doc.valide ? 'checked' : ''}>Document validé</label>
@@ -183,6 +186,8 @@ function dosDoc(e, t) {
 }
 A.corriger = async el => {
   const t = el.dataset.t, e = eleveOuvert(), doc = e.d[t]; if (CHAMPS[t]) lireDoc(t, doc);
+  // CV / lettre : on repart de la version enregistrée (l'élève a pu déposer une nouvelle version entre-temps).
+  else Object.assign(doc, await getDoc(`eleve/${e.id}/${t}`) || {});
   doc.correction = { par: nomComplet(S.user), date: maintenant(), commentaire: val('f_commentaire') };
   doc.valide = $('#f_valide').checked; doc.aRelire = false;
   await putDoc(`eleve/${e.id}/${t}`, doc); render(); toast('Correction enregistrée');

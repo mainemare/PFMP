@@ -27,7 +27,7 @@ const ERR = {
   identifiant_invalide: 'Identifiant : 3 à 40 caractères (lettres sans accent, chiffres, point, tiret).',
   motdepasse_court: 'Le mot de passe doit contenir au moins 6 caractères.', code_prof: 'Code professeur incorrect.',
   classe_requise: 'Choisis ta classe.', nom_requis: 'Nom et prénom sont obligatoires.', interdit: 'Action non autorisée.',
-  code_eleve: 'Code d’inscription élève incorrect : demande-le à ton professeur.', code_ddfpt: 'Code DDFPT incorrect.', code_chef: 'Code « chef d’établissement » incorrect.', convention_deja_signee: 'Cette convention a déjà été signée : elle ne peut plus être recréée. Demande à ton professeur référent de l’annuler si elle doit être corrigée.', convention_introuvable: 'Convention introuvable (elle a peut-être été annulée).', convention_indisponible: 'Les conventions ne sont disponibles qu’avec la version Google de l’application.', pas_lecteur: 'Votre compte ne permet pas d’ouvrir cette convention.', nom_initiales: 'Pour le nom, indique seulement les 2 premières lettres.', referent_sans_email: 'Ton professeur référent n’a pas encore indiqué son adresse e-mail dans l’application.', pas_de_referent: 'Aucun professeur référent n’est désigné pour ta classe.', envoi_impossible: 'L’e-mail n’a pas pu être envoyé (service de messagerie indisponible).', envoi_indisponible: 'L’envoi par e-mail n’est pas disponible avec ce serveur.', email_invalide: 'Adresse e-mail invalide.', trop_gros: 'Fichier trop volumineux.', trop_essais: 'Trop de tentatives. Réessaie dans quelques minutes.',
+  code_eleve: 'Code d’inscription élève incorrect : demande-le à ton professeur.', code_ddfpt: 'Code DDFPT incorrect.', code_chef: 'Code « chef d’établissement » incorrect.', convention_deja_signee: 'Cette convention a déjà été signée : elle ne peut plus être recréée. Demande à ton professeur référent de l’annuler si elle doit être corrigée.', convention_introuvable: 'Convention introuvable (elle a peut-être été annulée).', convention_indisponible: 'Les conventions ne sont disponibles qu’avec la version Google de l’application.', pas_lecteur: 'Votre compte ne permet pas d’ouvrir cette convention.', nom_initiales: 'Pour le nom, indique seulement les 2 premières lettres.', referent_sans_email: 'Ton professeur référent n’a pas encore indiqué son adresse e-mail dans l’application.', pas_de_referent: 'Aucun professeur référent n’est désigné pour ta classe.', envoi_impossible: 'L’e-mail n’a pas pu être envoyé (service de messagerie indisponible).', envoi_indisponible: 'L’envoi par e-mail n’est pas disponible avec ce serveur.', email_invalide: 'Adresse e-mail invalide.', trop_gros: 'Fichier trop volumineux.', trop_essais: 'Trop de tentatives. Réessaie dans quelques minutes.', pas_un_pdf: 'Ce fichier n’est pas un PDF valide.', fichier_indisponible: 'Le dépôt de documents n’est disponible qu’avec la version Google de l’application.',
   non_connecte: 'Session expirée, reconnecte-toi.', introuvable: 'Élément introuvable.',
 };
 const NIV = [
@@ -42,9 +42,9 @@ const STATUTS = {
 const DEF = {
   // Données minimales : prénom + 2 premières lettres du nom, pas d'e-mail ni de téléphone.
   profil: () => ({ nom: '', prenom: '', classeId: '', residences: [], nbSuggestions: 8 }),
-  // CV et lettre : les PDF sont dans l'espace documentaire de l'ENT ; ici, seulement leur suivi.
-  cv: () => ({ deposeLe: null, aRelire: false, valide: false, correction: null }),
-  lettre: () => ({ deposeLe: null, aRelire: false, valide: false, correction: null }),
+  // CV et lettre : le PDF est dans un dossier privé du Drive de l'application ; ici, le suivi et les annotations du professeur.
+  cv: () => ({ deposeLe: null, fichierLe: null, taille: 0, aRelire: false, valide: false, correction: null, annotations: null }),
+  lettre: () => ({ deposeLe: null, fichierLe: null, taille: 0, aRelire: false, valide: false, correction: null, annotations: null }),
   memento: () => ({ accroche: '', perso: '', pro: '', motsCles: '', aRelire: false, valide: false, correction: null }),
   demandes: () => ({ liste: [] }),
   journal: () => ({ evenements: [] }),
@@ -331,7 +331,7 @@ function vueAccueil() {
   const d = S.el, n = niveau(d), al = alerteEleve(d);
   const nonLus = d.prof.conseils.filter(c => !d.etat.conseilsLus.includes(c.id)), rel = relancesDues(d);
   const todo = [[d.profil.residences.some(r => r.lat != null), 'Compléter mon profil et mes communes de résidence', 'profil'], [!!d.memento.accroche.trim(), 'Préparer mon memento d’appel', 'memento'],
-    [!!d.cv.deposeLe, 'Déposer mon CV sur l’ENT', 'cv'], [!!d.lettre.deposeLe, 'Déposer ma lettre de motivation sur l’ENT', 'lettre'], [d.demandes.liste.length > 0, 'Sélectionner des entreprises à appeler', 'entreprises']];
+    [!!d.cv.deposeLe, 'Déposer mon CV', 'cv'], [!!d.lettre.deposeLe, 'Déposer ma lettre de motivation', 'lettre'], [d.demandes.liste.length > 0, 'Sélectionner des entreprises à appeler', 'entreprises']];
   return `<div class="alerte ${al.c}" role="alert">${al.h}</div>
   <section class="carte"><h2>Où j’en suis</h2>${barre(n, false, d)}${progressionRecherche(d) ? `<p style="margin:10px 0 0">${progressionRecherche(d)}</p>` : ''}
     <div class="etapes">${NIV.map((v, i) => `<div class="${i <= n ? 'fait' : ''}" style="${i <= n ? `background:${NIV[n].c}` : ''}"><b>${i}</b>${v.l}</div>`).join('')}</div>
@@ -590,26 +590,23 @@ function vueDoc(type) {
     ${blocCorrection(doc)}${formDoc(type, doc)}
     <div class="actions"><button class="btn" data-a="sauverDoc" data-t="${type}">Enregistrer</button></div></section>`;
 }
-// CV et lettre : rédigés par l'élève, déposés en PDF dans l'espace documentaire de L'Educ de Normandie.
+// CV et lettre : rédigés par l'élève, déposés en PDF dans l'application, annotés par le professeur.
 function vueDepot(type, doc) {
-  const quoi = type === 'cv' ? 'ton CV' : 'ta lettre de motivation', fichier = type === 'cv' ? 'CV' : 'Lettre-motivation';
+  const quoi = type === 'cv' ? 'ton CV' : 'ta lettre de motivation', nb = nbAnnotations(doc);
   return `<section class="carte"><h2>${TITRES[type]}</h2>${blocCorrection(doc)}
-    <p>${doc.deposeLe ? `✅ Déposé${doc.aRelire ? ' et signalé à ton professeur' : ''} le <b>${fmtDT(doc.deposeLe)}</b>.` : '⬜ Pas encore déposé.'}</p>
+    ${doc.fichierLe ? `<div class="fichier-depose"><span class="icone-pdf" aria-hidden="true">PDF</span><div><b>${TITRES[type]}</b> déposé le ${fmtDT(doc.fichierLe)}${doc.taille ? ` · ${tailleLisible(doc.taille)}` : ''}
+        <br>${nb ? `✏️ <b>${nb} annotation${nb > 1 ? 's' : ''}</b> de ${esc(doc.annotations.par)} : regarde-les et corrige ton document.` : doc.aRelire ? '🟣 En attente de relecture par ton professeur.' : ''}</div></div>
+      <div class="actions"><button class="btn" data-a="voirFichier" data-t="${type}">👁️ ${nb ? 'Voir les annotations' : 'Voir mon document'}</button></div>`
+      : `<p>⬜ Pas encore déposé.${doc.deposeLe ? ` <span class="doux petit">(dépôt sur l’ENT signalé le ${fmtDT(doc.deposeLe)} : dépose-le maintenant ici)</span>` : ''}</p>`}
+    <h3>${doc.fichierLe ? 'Déposer une nouvelle version' : 'Déposer ' + quoi}</h3>
     <ol>
-      <li>Rédige ${quoi} (traitement de texte, modèle conseillé par ton professeur…) et enregistre-le <b>en PDF</b>, par exemple <code>${fichier}.pdf</code>.</li>
-      <li>Ouvre <b>L’Educ de Normandie</b> (ENT) › <b>Espace documentaire</b>, et dépose le PDF dans un dossier <b>Stage</b>.</li>
-      <li>Partage le fichier avec ton professeur (bouton <b>Partager</b>) pour qu’il puisse le lire et l’annoter.</li>
-      <li>Reviens ici et clique sur le bouton ci-dessous pour le prévenir.</li>
+      <li>Rédige ${quoi} (traitement de texte, modèle conseillé par ton professeur…) et enregistre-le <b>en PDF</b> : Fichier › Enregistrer sous (ou Exporter) › PDF.</li>
+      <li>Choisis le fichier ci-dessous : ton professeur est prévenu et pourra l’annoter.${doc.fichierLe ? ' La nouvelle version remplace l’ancienne (et ses annotations).' : ''}</li>
     </ol>
-    <p class="doux petit">🔒 Ton CV et ta lettre restent dans l’ENT : cette application n’en garde aucune copie.</p>
-    <div class="actions"><button class="btn" data-a="deposer" data-t="${type}">📤 ${doc.deposeLe ? 'J’ai mis à jour' : 'J’ai déposé'} ${quoi} sur l’ENT</button></div></section>`;
+    <label class="btn depot-fichier">📤 Choisir le PDF<input type="file" accept="application/pdf,.pdf" data-c="deposerFichier" data-t="${type}"></label>
+    <p class="doux petit">🔒 Ton document est rangé dans un dossier privé de l’application, visible seulement par tes professeurs (4 Mo maximum). Il est supprimé avec ton compte.
+      ${doc.fichierLe ? `<button type="button" class="lien" style="display:inline" data-a="retirerFichier" data-t="${type}">Retirer mon document</button>` : ''}</p></section>`;
 }
-A.deposer = async el => {
-  const t = el.dataset.t, ancien = S.el[t];
-  // On réécrit un document propre (seulement le suivi), sans aucun texte de CV ou de lettre.
-  S.el[t] = { deposeLe: maintenant(), aRelire: true, valide: false, correction: ancien.correction || null };
-  await sauver(t); journal(`${TITRES[t]} déposé sur l’ENT`); toast('Ton professeur est prévenu'); render();
-};
 A.sauverDoc = async el => {
   const t = el.dataset.t, doc = S.el[t]; lireDoc(t, doc);
   doc.aRelire = true; doc.valide = false; doc.majLe = maintenant();
@@ -649,7 +646,7 @@ document.addEventListener('keydown', ev => {
 
 // Rafraîchissement périodique (conseils reçus côté élève, activité des élèves côté professeur)
 setInterval(async () => {
-  if (!S.user || $('#modal').innerHTML || S.dossier || document.hidden) return;
+  if (!S.user || $('#modal').innerHTML || S.dossier || document.hidden || $('#visio')) return;
   try {
     if (S.user.role !== 'eleve') { if (S.vue === 'tableau') { await chargerEleves(); majListe(); } }
     else if (S.vue === 'accueil') {

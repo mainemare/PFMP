@@ -17,6 +17,7 @@ const ITERATIONS = 300;
 function autoriser() {
   Logger.log("Envoi d'e-mails autorise. E-mails encore disponibles aujourd'hui : " + MailApp.getRemainingDailyQuota());
   Logger.log('Dossier des conventions (chiffrees) : ' + dossierConventions().getName());
+  Logger.log('Dossier des CV et lettres (prive) : ' + dossierFichiers().getName());
   Logger.log("Code « chef d'etablissement » (proviseur, adjoint ou DDFPT) : " + config().codeChef);
   Logger.log("Code d'inscription du DDFPT : " + config().codeDdfpt);
 }
@@ -158,6 +159,63 @@ function ecrireFichierConv(id, nom, obj) {
   if (id) { DriveApp.getFileById(id).setContent(t); return id; }
   return dossierConventions().createFile(nom, t, 'application/json').getId();
 }
+
+/* ---------- CV et lettres de motivation (PDF) : dossier prive du Drive, jamais partage ----------
+ * L'identifiant du fichier est garde dans le classeur sous eleve/<id>/fichier-cv (cle inaccessible par /api/doc :
+ * un eleve ne peut donc pas faire lire un autre fichier du Drive). */
+const TYPES_FICHIER = ['cv', 'lettre'];
+const MAX_PDF = 4 * 1024 * 1024;
+function dossierFichiers() {
+  const p = PropertiesService.getScriptProperties(), id = p.getProperty('DOSSIER_FICHIERS');
+  if (id) { try { return DriveApp.getFolderById(id); } catch (e) { /* dossier supprime : on le recree */ } }
+  const f = DriveApp.createFolder('Suivi des stages - CV et lettres (prive, ne pas partager)');
+  p.setProperty('DOSSIER_FICHIERS', f.getId());
+  return f;
+}
+function supprimerFichiersDe(eleveId) {
+  TYPES_FICHIER.forEach(t => {
+    const m = JSON.parse(getDoc('eleve/' + eleveId + '/fichier-' + t));
+    if (m && m.id) { try { DriveApp.getFileById(m.id).setTrashed(true); } catch (e) { /* deja supprime */ } }
+  });
+}
+function routesFichier(route, b, user, estProf) {
+  const type = String(b.type || '');
+  if (TYPES_FICHIER.indexOf(type) < 0) return ko(400, 'invalide');
+  const eleveId = user.role === 'eleve' ? user.id : String(b.eleveId || '');
+  if (!/^[a-f0-9]{12}$/.test(eleveId) || (!estProf && eleveId !== user.id)) return ko(403, 'interdit');
+  const cleMeta = 'eleve/' + eleveId + '/fichier-' + type, cleDoc = 'eleve/' + eleveId + '/' + type;
+  const meta = JSON.parse(getDoc(cleMeta));
+
+  if (route === 'POST /api/fichier/lire') {
+    if (!meta || !meta.id) return ko(404, 'introuvable');
+    return ok({ pdf: Utilities.base64Encode(DriveApp.getFileById(meta.id).getBlob().getBytes()), date: meta.date });
+  }
+  if (user.role !== 'eleve') return ko(403, 'interdit');   // seul l'eleve depose ou retire son document
+  if (route === 'POST /api/fichier/deposer') {
+    const s = String(b.pdf || '');
+    if (s.length > MAX_PDF * 1.4) return ko(413, 'trop_gros');
+    const o = Utilities.base64Decode(s);
+    if (o.length < 5 || o.length > MAX_PDF || String.fromCharCode(o[0], o[1], o[2], o[3], o[4]) !== '%PDF-') return ko(400, 'pas_un_pdf');
+    if (meta && meta.id) { try { DriveApp.getFileById(meta.id).setTrashed(true); } catch (e) { /* deja supprime */ } }
+    const date = new Date().toISOString();
+    const f = dossierFichiers().createFile(Utilities.newBlob(o, 'application/pdf', eleveId + '-' + type + '.pdf'));
+    setDoc(cleMeta, JSON.stringify({ id: f.getId(), date: date, taille: o.length }));
+    // Nouvelle version : a relire ; les annotations portaient sur l'ancienne version.
+    const d = JSON.parse(getDoc(cleDoc)) || {};
+    d.deposeLe = date; d.fichierLe = date; d.taille = o.length; d.aRelire = true; d.valide = false; d.annotations = null;
+    setDoc(cleDoc, JSON.stringify(d));
+    return ok(d);
+  }
+  if (route === 'POST /api/fichier/supprimer') {
+    if (meta && meta.id) { try { DriveApp.getFileById(meta.id).setTrashed(true); } catch (e) { /* deja supprime */ } }
+    setDoc(cleMeta, 'null');
+    const d = JSON.parse(getDoc(cleDoc)) || {};
+    d.deposeLe = null; d.fichierLe = null; d.taille = 0; d.aRelire = false; d.annotations = null;
+    setDoc(cleDoc, JSON.stringify(d));
+    return ok(d);
+  }
+  return ko(404, 'introuvable');
+}
 function metaConv(id) { return /^[a-f0-9]{16}$/.test(id) ? JSON.parse(getDoc('conv/' + id)) : null; }
 function supprimerConventionsDe(eleveId) {
   const t = table(), lignes = [];
@@ -282,7 +340,7 @@ function routesConvention(route, b, user, jeton) {
 /* ---------- Routes (memes chemins que server.js) ---------- */
 function traiter(req) {
   const m = String(req.m || 'GET'), chemin = String(req.p || ''), b = req.b || {}, route = m + ' ' + chemin;
-  const ecriture = m !== 'GET' && ['POST /api/connexion', 'POST /api/protocole/envoyer', 'POST /api/convention/lire'].indexOf(route) < 0;
+  const ecriture = m !== 'GET' && ['POST /api/connexion', 'POST /api/protocole/envoyer', 'POST /api/convention/lire', 'POST /api/fichier/lire'].indexOf(route) < 0;
   let verrou = null;
   if (ecriture) { verrou = LockService.getScriptLock(); verrou.waitLock(20000); }
   try { return router(m, chemin, route, b, req.t); }
@@ -343,6 +401,8 @@ function router(m, chemin, route, b, jeton) {
   const estProf = user.role === 'prof' || user.role === 'ddfpt';
 
   if (route === 'GET /api/moi') return ok(userInfo(user));
+
+  if (chemin.indexOf('/api/fichier/') === 0) return routesFichier(route, b, user, estProf);
 
   // Eleve : entreprise trouvee par lui-meme, proposee pour la base ; elle n'y entre qu'apres validation (prof ou DDFPT).
   if (route === 'POST /api/entreprises/proposer') {
@@ -415,6 +475,7 @@ function router(m, chemin, route, b, jeton) {
       sauverComptes(l);
     } else {
       sauverComptes(l.filter(u => u !== cible));
+      supprimerFichiersDe(cible.id);
       supprimerDocs('eleve/' + cible.id + '/');
       for (const cv of toutesConventions().filter(x => x.eleveId === cible.id)) { try { DriveApp.getFileById(cv.fichier).setTrashed(true); } catch (e) { /* deja supprime */ } }
       supprimerConventionsDe(cible.id);
