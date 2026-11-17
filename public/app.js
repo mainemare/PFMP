@@ -27,7 +27,7 @@ const ERR = {
   identifiant_invalide: 'Identifiant : 3 à 40 caractères (lettres sans accent, chiffres, point, tiret).',
   motdepasse_court: 'Le mot de passe doit contenir au moins 6 caractères.', code_prof: 'Code professeur incorrect.',
   classe_requise: 'Choisis ta classe.', nom_requis: 'Nom et prénom sont obligatoires.', interdit: 'Action non autorisée.',
-  code_eleve: 'Code d’inscription élève incorrect : demande-le à ton professeur.', code_ddfpt: 'Code DDFPT incorrect.', code_chef: 'Code « chef d’établissement » incorrect.', convention_deja_signee: 'Cette convention a déjà été signée : elle ne peut plus être recréée. Demande à ton professeur référent de l’annuler si elle doit être corrigée.', convention_introuvable: 'Convention introuvable (elle a peut-être été annulée).', convention_indisponible: 'Les conventions ne sont disponibles qu’avec la version Google de l’application.', pas_lecteur: 'Votre compte ne permet pas d’ouvrir cette convention.', nom_initiales: 'Pour le nom, indique seulement les 2 premières lettres.', referent_sans_email: 'Ton professeur référent n’a pas encore indiqué son adresse e-mail dans l’application.', pas_de_referent: 'Aucun professeur référent n’est désigné pour ta classe.', envoi_impossible: 'L’e-mail n’a pas pu être envoyé (service de messagerie indisponible).', envoi_indisponible: 'L’envoi par e-mail n’est pas disponible avec ce serveur.', email_invalide: 'Adresse e-mail invalide.', trop_gros: 'Fichier trop volumineux.', trop_essais: 'Trop de tentatives. Réessaie dans quelques minutes.', pas_un_pdf: 'Ce fichier n’est pas un PDF valide.', fichier_indisponible: 'Le dépôt de documents n’est disponible qu’avec la version Google de l’application.',
+  code_eleve: 'Code d’inscription élève incorrect : demande-le à ton professeur.', code_ddfpt: 'Code DDFPT incorrect.', code_chef: 'Code « chef d’établissement » incorrect.', convention_deja_signee: 'Cette convention a déjà été signée : elle ne peut plus être recréée. Demande à ton professeur référent de l’annuler si elle doit être corrigée.', convention_introuvable: 'Convention introuvable (elle a peut-être été annulée).', convention_indisponible: 'Les conventions ne sont disponibles qu’avec la version Google de l’application.', pas_lecteur: 'Votre compte ne permet pas d’ouvrir cette convention.', nom_initiales: 'Pour le nom, indique seulement les 2 premières lettres.', referent_sans_email: 'Ton professeur référent n’a pas encore indiqué son adresse e-mail dans l’application.', pas_de_referent: 'Aucun professeur référent n’est désigné pour ta classe.', envoi_impossible: 'L’e-mail n’a pas pu être envoyé (service de messagerie indisponible).', envoi_indisponible: 'L’envoi par e-mail n’est pas disponible avec ce serveur.', email_invalide: 'Adresse e-mail invalide.', trop_gros: 'Fichier trop volumineux.', trop_essais: 'Trop de tentatives. Réessaie dans quelques minutes.', pas_un_pdf: 'Ce fichier n’est pas un PDF valide.', mission_indisponible: 'Les ordres de mission ne sont disponibles qu’avec la version Google de l’application.', fichier_indisponible: 'Le dépôt de documents n’est disponible qu’avec la version Google de l’application.',
   non_connecte: 'Session expirée, reconnecte-toi.', introuvable: 'Élément introuvable.',
 };
 const NIV = [
@@ -49,7 +49,7 @@ const DEF = {
   demandes: () => ({ liste: [] }),
   journal: () => ({ evenements: [] }),
   etat: () => ({ conseilsLus: [] }),
-  prof: () => ({ conseils: [], propositions: [], niveauForce: null, dates: null, urgence: null, validations: {} }),
+  prof: () => ({ conseils: [], propositions: [], niveauForce: null, dates: null, urgence: null, validations: {}, visites: [] }),
 };
 const normaliser = docs => { const o = {}; for (const k in DEF) o[k] = Object.assign(DEF[k](), (docs && docs[k]) || {}); return o; };
 const CHAMPS = {
@@ -215,10 +215,10 @@ function entete(prof) {
   let nav;
   if (prof) {
     const nu = urgences().filter(e => !e.d.prof.urgence).length + protocolesAValider().filter(({ e }) => estReferentDe(e)).length;
-    const np = (S.propositionsEnt || []).length;
+    const np = (S.propositionsEnt || []).length, ns = missionsASigner().length;
     nav = S.user.role === 'ddfpt'
-      ? [['synthese', '🏫 Vue d’ensemble'], ['tableau', '📊 Élèves'], ['classes', '📅 Classes et dates PFMP'], ['entreprises', '🏢 Entreprises', np], ['carte', '🗺️ Carte'], ['alertes', '🔔 Alertes', nu]]
-      : [['tableau', '📊 Tableau de bord'], ['alertes', '🔔 Alertes', nu], ['carte', '🗺️ Carte'], ['classes', '📅 Classes et dates'], ['entreprises', '🏢 Entreprises', np]];
+      ? [['synthese', '🏫 Vue d’ensemble'], ['tableau', '📊 Élèves'], ['classes', '📅 Classes et dates PFMP'], ['visites', '🗓️ Visites', ns], ['entreprises', '🏢 Entreprises', np], ['carte', '🗺️ Carte'], ['alertes', '🔔 Alertes', nu]]
+      : [['tableau', '📊 Tableau de bord'], ['alertes', '🔔 Alertes', nu], ['visites', '🗓️ Visites', ns], ['carte', '🗺️ Carte'], ['classes', '📅 Classes et dates'], ['entreprises', '🏢 Entreprises', np]];
   } else {
     const d = S.el, nl = d.prof.conseils.filter(c => !d.etat.conseilsLus.includes(c.id)).length;
     nav = [['accueil', '🏠 Accueil', nl], ['profil', '👤 Mon profil'], ['entreprises', '🏢 Entreprises'], ['suivi', '📞 Mes appels', relancesDues(d).length],
@@ -332,7 +332,7 @@ function vueAccueil() {
   const nonLus = d.prof.conseils.filter(c => !d.etat.conseilsLus.includes(c.id)), rel = relancesDues(d);
   const todo = [[d.profil.residences.some(r => r.lat != null), 'Compléter mon profil et mes communes de résidence', 'profil'], [!!d.memento.accroche.trim(), 'Préparer mon memento d’appel', 'memento'],
     [!!d.cv.deposeLe, 'Déposer mon CV', 'cv'], [!!d.lettre.deposeLe, 'Déposer ma lettre de motivation', 'lettre'], [d.demandes.liste.length > 0, 'Sélectionner des entreprises à appeler', 'entreprises']];
-  return `<div class="alerte ${al.c}" role="alert">${al.h}</div>
+  return `<div class="alerte ${al.c}" role="alert">${al.h}</div>${blocVisiteEleve(d)}
   <section class="carte"><h2>Où j’en suis</h2>${barre(n, false, d)}${progressionRecherche(d) ? `<p style="margin:10px 0 0">${progressionRecherche(d)}</p>` : ''}
     <div class="etapes">${NIV.map((v, i) => `<div class="${i <= n ? 'fait' : ''}" style="${i <= n ? `background:${NIV[n].c}` : ''}"><b>${i}</b>${v.l}</div>`).join('')}</div>
     <p class="doux petit" style="margin-top:10px">Le niveau avance tout seul : 1 dès qu’une entreprise est sélectionnée, 2 (recherche active) à partir de ${SEUIL_ACTIVE} entreprises contactées — très active à partir de ${SEUIL_TRES_ACTIVE} —, puis selon le statut de tes demandes (rendez-vous, protocole, convention).</p></section>

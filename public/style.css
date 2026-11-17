@@ -269,3 +269,32 @@ body.visio-ouverte { overflow: hidden; }
   .visio-notes { width: auto; max-height: 38vh; order: 2; }
   .visio-outils button span { display: none; }
 }
+
+/* Visites de stage : agenda, ordre de mission, état de frais */
+.ag-tete { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 10px; }
+.ag-tete h2 { margin: 0; text-transform: capitalize; min-width: 150px; text-align: center; }
+.ag-grille { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 3px; }
+.ag-nom { text-align: center; font-size: .78rem; font-weight: 600; color: var(--doux); padding: 2px 0; }
+.ag-case { min-height: 86px; background: #f8f9fc; border: 1px solid var(--trait); border-radius: 8px; padding: 3px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ag-case.vide { background: none; border: 0; }
+.ag-case.we { background: #f1f2f6; }
+.ag-case.auj { border: 2px solid var(--prim); }
+.ag-jour { align-self: flex-start; background: none; border: 0; border-radius: 6px; font: inherit; font-size: .8rem; font-weight: 700; padding: 1px 6px; cursor: pointer; color: var(--texte); }
+.ag-jour:hover, .ag-jour:focus-visible { background: #dbe0f3; }
+.ag-visite { display: block; width: 100%; text-align: left; border: 0; border-radius: 5px; padding: 2px 4px; font: inherit; font-size: .72rem; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #fff; background: #15803d; }
+.ag-visite.visio { background: #2563eb; }
+.ag-visite.faite { opacity: .65; }
+.ag-visite.annulee { background: #9ca3af; text-decoration: line-through; }
+.ag-liste { list-style: none; padding: 0; margin: 6px 0; }
+.ag-liste li { padding: 6px 0; border-bottom: 1px solid var(--trait); }
+.ag-liste .lien { display: inline; }
+.om-table td { vertical-align: top; padding: 4px; }
+.om-table input:not([type=checkbox]), .om-table textarea { margin: 0; padding: 5px 6px; font-size: .85rem; min-width: 0; }
+fieldset.choix-groupe { border: 1px solid var(--trait); border-radius: 10px; padding: 8px 14px; margin: 10px 0 4px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 22px; }
+fieldset.choix-groupe legend { font-weight: 600; font-size: .88rem; padding: 0 6px; }
+label.choix { font-weight: 400; margin: 0; display: inline-flex; align-items: center; gap: 6px; }
+.visite-eleve { border-left: 5px solid #15803d; }
+@media (max-width: 640px) {
+  .ag-case { min-height: 58px; }
+  .ag-visite { font-size: 0; padding: 0; height: 8px; }
+}

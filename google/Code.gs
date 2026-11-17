@@ -137,7 +137,7 @@ const comptes = () => JSON.parse(getDoc('systeme/comptes')) || [];
 const sauverComptes = l => setDoc('systeme/comptes', JSON.stringify(l));
 // L'adresse e-mail n'existe que pour les professeurs (jamais pour les eleves) et n'est renvoyee qu'au professeur lui-meme.
 const userInfo = u => ({ id: u.id, role: u.role, nom: u.nom, prenom: u.prenom, identifiant: u.identifiant, classeId: u.classeId || null,
-  email: u.role !== 'eleve' ? (u.email || '') : undefined, chef: u.role === 'prof' ? !!u.chef : undefined });
+  email: u.role !== 'eleve' ? (u.email || '') : undefined, chef: u.role === 'prof' || u.role === 'ddfpt' ? !!u.chef : undefined });
 
 /* ---------- Conventions : contenu chiffre dans le navigateur, range dans un dossier Google Drive ----------
  * Le classeur ne garde que des informations de suivi (qui a signe, quand). Le contenu (identite de l'eleve,
@@ -247,7 +247,7 @@ function peutAgir(m, user, role, code) {
   if (!user) return false;
   if (role === 'eleve') return user.role === 'eleve' && user.id === m.eleveId;
   if (role === 'referent') { const r = referentDeClasse(m.classeId); return user.role === 'prof' && (!r || r === user.id); }
-  if (role === 'chef') return user.role === 'prof' && !!user.chef;
+  if (role === 'chef') return (user.role === 'prof' || user.role === 'ddfpt') && !!user.chef;
   return false;
 }
 function majDemandeEleve(eleveId, demandeId, fn) {
@@ -326,7 +326,7 @@ function routesConvention(route, b, user, jeton) {
     return ok({ ok: true });
   }
   if (route === 'POST /api/moi/chef') {
-    if (user.role !== 'prof') return ko(403, 'interdit');
+    if (user.role !== 'prof' && user.role !== 'ddfpt') return ko(403, 'interdit');
     const l = comptes(), u = l.find(x => x.id === user.id);
     if (b.retirer) u.chef = false;
     else if (String(b.code || '').trim().toUpperCase() !== config().codeChef.toUpperCase()) return ko(403, 'code_chef');
@@ -335,6 +335,40 @@ function routesConvention(route, b, user, jeton) {
     return ok(userInfo(u));
   }
   return null;
+}
+
+/* ---------- Ordres de mission (visites de stage) : prepares par le professeur, signes par le chef d'etablissement ---------- */
+function missions() { const l = []; table().m.forEach((x, cle) => { if (cle.indexOf('mission/') === 0 && x.texte && x.texte !== 'null') l.push(JSON.parse(x.texte)); }); return l; }
+function routesMission(route, b, user) {
+  const chef = !!user.chef, id = String(b.id || '');
+  if (route === 'GET /api/missions') return ok(missions().filter(m => m.profId === user.id || chef).sort((a, c) => String(c.creeLe).localeCompare(String(a.creeLe))));
+  if (route === 'POST /api/mission/enregistrer') {
+    const texte = JSON.stringify(b.contenu || null);
+    if (!b.contenu || texte.length > 200000) return ko(400, 'invalide');
+    let m = /^[a-f0-9]{16}$/.test(id) ? JSON.parse(getDoc('mission/' + id)) : null;
+    if (m && m.profId !== user.id) return ko(403, 'interdit');
+    // Toute modification annule la signature : le chef d'etablissement doit signer la nouvelle version.
+    m = { id: m ? m.id : hasard(16), profId: user.id, profNom: user.prenom + ' ' + user.nom, creeLe: m ? m.creeLe : new Date().toISOString(),
+      majLe: new Date().toISOString(), titre: String(b.titre || '').slice(0, 120), contenu: b.contenu, signature: null };
+    setDoc('mission/' + m.id, JSON.stringify(m));
+    return ok(m);
+  }
+  const m = /^[a-f0-9]{16}$/.test(id) ? JSON.parse(getDoc('mission/' + id)) : null;
+  if (!m) return ko(404, 'introuvable');
+  if (route === 'POST /api/mission/signer') {
+    if (!chef) return ko(403, 'interdit');
+    const img = String(b.img || '');
+    if (!/^data:image\/(png|jpeg);base64,[A-Za-z0-9+\/=]+$/.test(img) || img.length > 400000) return ko(400, 'invalide');
+    m.signature = { img: img, par: user.prenom + ' ' + user.nom, date: new Date().toISOString() };
+    setDoc('mission/' + m.id, JSON.stringify(m));
+    return ok(m);
+  }
+  if (route === 'POST /api/mission/supprimer') {
+    if (m.profId !== user.id && !chef) return ko(403, 'interdit');
+    supprimerDocs('mission/' + m.id);
+    return ok({ ok: true });
+  }
+  return ko(404, 'introuvable');
 }
 
 /* ---------- Routes (memes chemins que server.js) ---------- */
@@ -403,6 +437,7 @@ function router(m, chemin, route, b, jeton) {
   if (route === 'GET /api/moi') return ok(userInfo(user));
 
   if (chemin.indexOf('/api/fichier/') === 0) return routesFichier(route, b, user, estProf);
+  if (chemin.indexOf('/api/mission') === 0) { if (!estProf) return ko(403, 'interdit'); return routesMission(route, b, user); }
 
   // Eleve : entreprise trouvee par lui-meme, proposee pour la base ; elle n'y entre qu'apres validation (prof ou DDFPT).
   if (route === 'POST /api/entreprises/proposer') {
@@ -486,7 +521,10 @@ function router(m, chemin, route, b, jeton) {
   if (chemin.indexOf('/api/doc/') === 0) {
     const cle = chemin.slice(9), me = /^eleve\/([a-f0-9]{12})\/([a-z]+)$/.exec(cle);
     let droitEcriture;
+    // Espace prive du professeur : adresse personnelle, noms complets des eleves suivis, horaires des deplacements.
+    const mp = /^perso\/([a-f0-9]{12})$/.exec(cle);
     if (/^commun\/(classes|entreprises|etablissement)$/.test(cle)) droitEcriture = estProf;
+    else if (mp) { if (!estProf || mp[1] !== user.id) return ko(403, 'interdit'); droitEcriture = true; }
     else if (cle === 'commun/entreprises_proposees') { if (!estProf) return ko(403, 'interdit'); droitEcriture = true; }
     else if (me && SECTIONS.indexOf(me[2]) >= 0) {
       if (!estProf && user.id !== me[1]) return ko(403, 'interdit');

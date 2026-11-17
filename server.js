@@ -192,6 +192,7 @@ async function traiter(req, res) {
   if (chemin.startsWith('/api/convention') || route === 'POST /api/moi/chef') return erreur(req, res, 501, 'convention_indisponible');
   // CV et lettres en PDF : seulement avec la version Google (rangement dans le Drive).
   if (chemin.startsWith('/api/fichier/')) return erreur(req, res, 501, 'fichier_indisponible');
+  if (chemin.startsWith('/api/mission')) return erreur(req, res, 501, 'mission_indisponible');
   if (route === 'POST /api/deconnexion') return envoyer(req, res, 200, '{"ok":true}');
   if (route === 'GET /api/profs') return envoyer(req, res, 200, JSON.stringify(users.filter(u => u.role === 'prof').map(u => ({ id: u.id, nom: u.nom, prenom: u.prenom }))));
 
@@ -226,7 +227,9 @@ async function traiter(req, res) {
     const cle = chemin.slice(9);
     let ecriture;
     const me = /^eleve\/([a-f0-9]{12})\/([a-z]+)$/.exec(cle);
+    const mp = /^perso\/([a-f0-9]{12})$/.exec(cle);   // espace prive du professeur
     if (/^commun\/(classes|entreprises|etablissement)$/.test(cle)) ecriture = estProf;
+    else if (mp) { if (!estProf || mp[1] !== user.id) return erreur(req, res, 403, 'interdit'); ecriture = true; }
     else if (cle === 'commun/entreprises_proposees') { if (!estProf) return erreur(req, res, 403, 'interdit'); ecriture = true; }
     else if (me && SECTIONS.includes(me[2])) {
       if (!estProf && user.id !== me[1]) return erreur(req, res, 403, 'interdit');

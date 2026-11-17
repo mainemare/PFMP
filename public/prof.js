@@ -12,7 +12,7 @@ async function chargerEleves() {
   S.eleves = (await api('GET', '/api/eleves')).map(e => ({ id: e.id, identifiant: e.identifiant, d: normaliser(e.docs) }))
     .sort((a, b) => (a.d.profil.nom + a.d.profil.prenom).localeCompare(b.d.profil.nom + b.d.profil.prenom, 'fr'));
   if (S.codeEleve === undefined) { try { S.codeEleve = ((await api('GET', '/api/admin/codes')) || {}).codeEleve || ''; } catch { S.codeEleve = ''; } }
-  await Promise.all([chargerConventions(), chargerEtab(), chargerPropositions()]);
+  await Promise.all([chargerConventions(), chargerEtab(), chargerPropositions(), chargerVisites()]);
 }
 // Relit la version à jour sur le serveur avant de la modifier (plusieurs professeurs peuvent travailler en même temps).
 async function mutProf(id, fn) {
@@ -31,6 +31,7 @@ function vueProf() {
     case 'entreprises': return vueBase();
     case 'carte': return vueCarteProf();
     case 'synthese': return vueSynthese();
+    case 'visites': return vueVisites();
     case 'alertes': return vueAlertes();
     default: return vueTableau();
   }

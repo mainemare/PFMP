@@ -140,3 +140,19 @@ Limites
   puis Deployer > Gerer les deploiements > (crayon) > Nouvelle version.
   Donnees : un CV contient souvent l'adresse, le telephone et l'e-mail de l'eleve. Ils restent dans votre Drive
   personnel de travail ; pensez a supprimer les comptes (et donc les fichiers) en fin d'annee, et videz la corbeille du Drive.
+
+9. VISITES DE STAGE : AGENDA, ORDRE DE MISSION, ETAT DE FRAIS
+  - Console professeur ou DDFPT > « Visites ». Agenda du mois : touchez un jour pour planifier une visite (sur le terrain,
+    dans l'entreprise ou a une autre adresse, ou en visio avec un lien https). L'eleve voit la date, l'heure, le lieu ou
+    le lien de la visio, et votre message, sur sa page d'accueil.
+  - « Mes informations » : civilite, nom, residence personnelle, puissance fiscale du vehicule. Ces informations, les noms
+    de famille complets des eleves et les horaires des deplacements sont dans votre espace prive (cle perso/<id>) :
+    vous seul pouvez les lire.
+  - Ordre de mission : « Preparer un ordre de mission » reprend vos visites et vos eleves (noms a completer une fois,
+    ensuite memorises), puis l'envoie au chef d'etablissement. Celui-ci (compte professeur ou DDFPT avec le code
+    « chef d'etablissement » active dans Classes et dates) le voit dans « Visites > Ordres de mission a signer » et signe
+    a l'ecran ou par photo. Le professeur telecharge alors le PDF signe, avec la fiche « Visite des stagiaires en
+    entreprises » ou les entreprises apposent leur tampon. Toute modification annule la signature.
+  - Etat de frais : choisissez le mois ; les visites sur le terrain sont reprises avec les heures de depart et d'arrivee
+    et le peage/parking. Les kilometres restent a calculer par l'administration (« ne rien inscrire »).
+  Mise en place : mettez a jour Code.gs puis Deployer > Gerer les deploiements > (crayon) > Nouvelle version.
