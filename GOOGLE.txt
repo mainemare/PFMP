@@ -167,3 +167,17 @@ Limites
     classe ou le diplome prepare), triee par distance a leurs communes, avec « Ajouter a mes appels ». Une offre disparait
     apres sa date de fin.
   Mise en place : mettez a jour Code.gs puis Deployer > Gerer les deploiements > (crayon) > Nouvelle version.
+
+11. IMPORT DES OFFRES FRANCE TRAVAIL
+  1. Creez un compte gratuit sur https://francetravail.io (espace developpeur), puis une application. Abonnez-la a
+     l'API « Offres d'emploi v2 ». Notez l'identifiant client et la cle secrete.
+  2. Apps Script > Parametres du projet > Proprietes du script : ajoutez FT_CLIENT_ID (identifiant client) et
+     FT_CLIENT_SECRET (cle secrete). Ils ne sont jamais montres dans l'application.
+     (Si France Travail indique d'autres « scopes » que « api_offresdemploiv2 o2dsoffre », ajoutez FT_SCOPE.)
+  3. Choisissez la fonction « activerImportFranceTravail » puis Executer : Google demande l'autorisation d'acceder
+     a Internet et de programmer des taches. Le script fait un premier import, puis un import chaque matin vers 6 h.
+  4. Redeployez une Nouvelle version (Deployer > Gerer les deploiements > crayon).
+  Dans la console > « Offres de stage » > « Offres France Travail » : departements (76 par defaut), mots-cles (stage,
+  stagiaire), contrats d'apprentissage (BTS), bouton « Importer maintenant ». Les offres trouvees arrivent dans les offres a
+  verifier (badge France Travail) : « Publier », « Modifier puis publier », ou tout publier / tout ecarter. Le niveau est
+  deduit du texte de l'offre. Une offre France Travail reste visible 45 jours ; l'eleve a un bouton « Voir l'offre et postuler ».

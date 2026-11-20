@@ -340,6 +340,78 @@ function routesConvention(route, b, user, jeton) {
 
 /* ---------- Ordres de mission (visites de stage) : prepares par le professeur, signes par le chef d'etablissement ---------- */
 function missions() { const l = []; table().m.forEach((x, cle) => { if (cle.indexOf('mission/') === 0 && x.texte && x.texte !== 'null') l.push(JSON.parse(x.texte)); }); return l; }
+/* ---------- Import des offres France Travail (API Offres d'emploi v2) ----------
+ * Identifiants de l'application (francetravail.io) : Proprietes du script FT_CLIENT_ID et FT_CLIENT_SECRET (jamais dans l'application).
+ * Reglages (departements, mots-cles, alternance) : document commun/francetravail, modifiable dans la console.
+ * Les offres trouvees vont dans les offres « a verifier » ; une offre deja vue (publiee ou refusee) n'est pas reproposee. */
+const FT_JETON = 'https://entreprise.francetravail.fr/connexion/oauth2/access_token?realm=%2Fpartenaire';
+const FT_RECHERCHE = 'https://api.francetravail.io/partenaire/offresdemploi/v2/offres/search';
+const FT_DEFAUT = () => ({ departements: ['76'], motsCles: ['stage', 'stagiaire'], alternance: true, vus: [], dernier: null });
+function jetonFranceTravail() {
+  const p = PropertiesService.getScriptProperties(), id = p.getProperty('FT_CLIENT_ID'), secret = p.getProperty('FT_CLIENT_SECRET');
+  if (!id || !secret) throw { http: 400, message: 'ft_non_configure' };
+  const r = UrlFetchApp.fetch(FT_JETON, { method: 'post', muteHttpExceptions: true, payload: { grant_type: 'client_credentials', client_id: id, client_secret: secret,
+    scope: p.getProperty('FT_SCOPE') || 'api_offresdemploiv2 o2dsoffre' } });
+  if (r.getResponseCode() !== 200) throw { http: 502, message: 'ft_identifiants' };
+  return JSON.parse(r.getContentText()).access_token;
+}
+function niveauxOffreFT(o) {
+  const t = [o.intitule, o.description, (o.formations || []).map(f => (f.niveauLibelle || '') + ' ' + (f.domaineLibelle || '')).join(' ')].join(' ').toLowerCase();
+  const n = [];
+  if (/\bcap\b/.test(t)) n.push('CAP');
+  if (/bac ?pro|baccalaur[ée]at professionnel|\bbac\b(?! ?\+)/.test(t)) n.push('Bac pro');
+  if (/\bbts\b|bac ?\+ ?2/.test(t) || o.alternance) n.push('BTS');
+  return n.length ? n : ['CAP', 'Bac pro', 'BTS'];
+}
+function versOffre(o) {
+  const lieu = o.lieuTravail || {}, c = o.contact || {}, ent = o.entreprise || {};
+  const fin = new Date(Date.now() + 45 * 864e5).toISOString().slice(0, 10);   // les offres France Travail n'ont pas de fin de stage : 45 jours de visibilite
+  const lien = (o.origineOffre && o.origineOffre.urlOrigine) || ('https://candidat.francetravail.fr/offres/recherche/detail/' + o.id);
+  return { id: 'ft-' + o.id, source: 'france_travail', entreprise: String(ent.nom || 'Entreprise (voir l’offre)').slice(0, 120), adresse: String(lieu.libelle || '').slice(0, 200),
+    lat: lieu.latitude != null ? +lieu.latitude : null, lon: lieu.longitude != null ? +lieu.longitude : null, secteur: String(o.secteurActiviteLibelle || '').slice(0, 80),
+    intitule: String(o.intitule || '').slice(0, 120), description: String(o.description || '').slice(0, 1500), niveaux: niveauxOffreFT(o), debut: '', fin: '', expireLe: fin, places: +o.nombrePostes || 1,
+    contact: String(c.nom || '').slice(0, 120), tel: String(c.telephone || '').slice(0, 40), email: String(c.courriel || '').slice(0, 120), lien: /^https:\/\//.test(lien) ? lien : '',
+    typeContrat: String(o.typeContratLibelle || o.typeContrat || '') + (o.alternance ? ' · alternance' : ''), deposeLe: o.dateCreation || new Date().toISOString() };
+}
+function importerFranceTravail() {
+  const cfg = Object.assign(FT_DEFAUT(), JSON.parse(getDoc('commun/francetravail')) || {});
+  const jeton = jetonFranceTravail(), vus = new Set(cfg.vus || []), trouvees = new Map();
+  const recherches = [];
+  cfg.departements.forEach(d => {
+    cfg.motsCles.forEach(m => recherches.push('departement=' + encodeURIComponent(d) + '&motsCles=' + encodeURIComponent(m)));
+    if (cfg.alternance) recherches.push('departement=' + encodeURIComponent(d) + '&natureContrat=E2');   // contrats d'apprentissage (BTS en alternance)
+  });
+  recherches.slice(0, 20).forEach(q => {
+    const r = UrlFetchApp.fetch(FT_RECHERCHE + '?' + q + '&range=0-149', { headers: { Authorization: 'Bearer ' + jeton, Accept: 'application/json' }, muteHttpExceptions: true });
+    const code = r.getResponseCode();
+    if (code === 204) return;
+    if (code !== 200 && code !== 206) throw { http: 502, message: 'ft_recherche' };
+    (JSON.parse(r.getContentText()).resultats || []).forEach(o => { if (o && o.id && !vus.has('ft-' + o.id)) trouvees.set('ft-' + o.id, versOffre(o)); });
+  });
+  const d = JSON.parse(getDoc('commun/offres_proposees')) || { liste: [] };
+  const deja = new Set(d.liste.map(o => o.id)), nouvelles = Array.from(trouvees.values()).filter(o => !deja.has(o.id)).slice(0, Math.max(0, 300 - d.liste.length));
+  d.liste = d.liste.concat(nouvelles);
+  setDoc('commun/offres_proposees', JSON.stringify(d));
+  nouvelles.forEach(o => vus.add(o.id));
+  cfg.vus = Array.from(vus).slice(-3000);
+  cfg.dernier = { date: new Date().toISOString(), nouvelles: nouvelles.length, trouvees: trouvees.size };
+  setDoc('commun/francetravail', JSON.stringify(cfg));
+  return cfg.dernier;
+}
+/** A lancer une fois depuis l'editeur, apres avoir renseigne FT_CLIENT_ID et FT_CLIENT_SECRET :
+ *  autorise l'acces a Internet, fait un premier import et programme un import chaque matin. */
+function activerImportFranceTravail() {
+  ScriptApp.getProjectTriggers().filter(t => t.getHandlerFunction() === 'importQuotidienFranceTravail').forEach(t => ScriptApp.deleteTrigger(t));
+  ScriptApp.newTrigger('importQuotidienFranceTravail').timeBased().everyDays(1).atHour(6).create();
+  Logger.log('Import programme chaque jour vers 6 h. Premier import : ' + JSON.stringify(importQuotidienFranceTravail()));
+}
+function importQuotidienFranceTravail() {
+  const verrou = LockService.getScriptLock(); verrou.waitLock(30000);
+  try { TABLE = null; return importerFranceTravail(); }
+  catch (e) { Logger.log('Import France Travail impossible : ' + (e && e.message || e)); return { erreur: String(e && e.message || e) }; }
+  finally { SpreadsheetApp.flush(); verrou.releaseLock(); }
+}
+
 function routesMission(route, b, user) {
   const chef = !!user.chef, id = String(b.id || '');
   if (route === 'GET /api/missions') return ok(missions().filter(m => m.profId === user.id || chef).sort((a, c) => String(c.creeLe).localeCompare(String(a.creeLe))));
@@ -460,6 +532,22 @@ function router(m, chemin, route, b, jeton) {
 
   if (chemin.indexOf('/api/fichier/') === 0) return routesFichier(route, b, user, estProf);
   if (chemin.indexOf('/api/mission') === 0) { if (!estProf) return ko(403, 'interdit'); return routesMission(route, b, user); }
+  if (route === 'GET /api/francetravail/etat') {
+    if (!estProf) return ko(403, 'interdit');
+    const p = PropertiesService.getScriptProperties(), cfg = Object.assign(FT_DEFAUT(), JSON.parse(getDoc('commun/francetravail')) || {});
+    return ok({ configure: !!(p.getProperty('FT_CLIENT_ID') && p.getProperty('FT_CLIENT_SECRET')), departements: cfg.departements, motsCles: cfg.motsCles, alternance: cfg.alternance, dernier: cfg.dernier });
+  }
+  if (route === 'POST /api/francetravail/reglages') {
+    if (!estProf) return ko(403, 'interdit');
+    const cfg = Object.assign(FT_DEFAUT(), JSON.parse(getDoc('commun/francetravail')) || {});
+    cfg.departements = (Array.isArray(b.departements) ? b.departements : []).map(String).filter(x => /^(\d{2,3}|2[AB])$/.test(x)).slice(0, 5);
+    cfg.motsCles = (Array.isArray(b.motsCles) ? b.motsCles : []).map(x => String(x).trim().slice(0, 40)).filter(Boolean).slice(0, 8);
+    cfg.alternance = !!b.alternance;
+    if (!cfg.departements.length) return ko(400, 'invalide');
+    setDoc('commun/francetravail', JSON.stringify(cfg));
+    return ok({ ok: true });
+  }
+  if (route === 'POST /api/francetravail/importer') { if (!estProf) return ko(403, 'interdit'); return ok(importerFranceTravail()); }
 
   // Eleve : entreprise trouvee par lui-meme, proposee pour la base ; elle n'y entre qu'apres validation (prof ou DDFPT).
   if (route === 'POST /api/entreprises/proposer') {
@@ -546,7 +634,7 @@ function router(m, chemin, route, b, jeton) {
     // Espace prive du professeur : adresse personnelle, noms complets des eleves suivis, horaires des deplacements.
     const mp = /^perso\/([a-f0-9]{12})$/.exec(cle);
     if (/^commun\/(classes|entreprises|etablissement|offres)$/.test(cle)) droitEcriture = estProf;
-    else if (cle === 'commun/offres_proposees') { if (!estProf) return ko(403, 'interdit'); droitEcriture = true; }
+    else if (cle === 'commun/offres_proposees' || cle === 'commun/francetravail') { if (!estProf) return ko(403, 'interdit'); droitEcriture = true; }
     else if (mp) { if (!estProf || mp[1] !== user.id) return ko(403, 'interdit'); droitEcriture = true; }
     else if (cle === 'commun/entreprises_proposees') { if (!estProf) return ko(403, 'interdit'); droitEcriture = true; }
     else if (me && SECTIONS.indexOf(me[2]) >= 0) {
