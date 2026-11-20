@@ -156,3 +156,14 @@ Limites
   - Etat de frais : choisissez le mois ; les visites sur le terrain sont reprises avec les heures de depart et d'arrivee
     et le peage/parking. Les kilometres restent a calculer par l'administration (« ne rien inscrire »).
   Mise en place : mettez a jour Code.gs puis Deployer > Gerer les deploiements > (crayon) > Nouvelle version.
+
+10. OFFRES DE STAGE (CAP, BAC PRO, BTS)
+  - Console > « Offres de stage » : lien a donner aux entreprises (bouton « Copier » ou « Preparer un e-mail »). L'entreprise
+    remplit un formulaire sans compte (page offre.html) : metier, niveaux, dates, places, contact. Le lien contient un code
+    (Proprietes du script > CODE_OFFRES) ; pour l'invalider, changez ce code : un nouveau lien apparait dans la console.
+  - Les offres recues attendent la verification d'un professeur ou du DDFPT (« Verifier et publier » : localiser l'adresse,
+    corriger, ajouter l'entreprise a la base) ou sont refusees. L'equipe peut aussi saisir une offre recue par telephone.
+  - Eleves : rubrique « Offres de stage », filtree sur le niveau de leur classe (CAP / Bac pro / BTS d'apres le nom de la
+    classe ou le diplome prepare), triee par distance a leurs communes, avec « Ajouter a mes appels ». Une offre disparait
+    apres sa date de fin.
+  Mise en place : mettez a jour Code.gs puis Deployer > Gerer les deploiements > (crayon) > Nouvelle version.

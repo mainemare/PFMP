@@ -11,8 +11,8 @@ const eleveOuvert = () => S.eleves.find(e => e.id === S.dossier);
 async function chargerEleves() {
   S.eleves = (await api('GET', '/api/eleves')).map(e => ({ id: e.id, identifiant: e.identifiant, d: normaliser(e.docs) }))
     .sort((a, b) => (a.d.profil.nom + a.d.profil.prenom).localeCompare(b.d.profil.nom + b.d.profil.prenom, 'fr'));
-  if (S.codeEleve === undefined) { try { S.codeEleve = ((await api('GET', '/api/admin/codes')) || {}).codeEleve || ''; } catch { S.codeEleve = ''; } }
-  await Promise.all([chargerConventions(), chargerEtab(), chargerPropositions(), chargerVisites()]);
+  if (S.codeEleve === undefined) { try { const c = (await api('GET', '/api/admin/codes')) || {}; S.codeEleve = c.codeEleve || ''; S.codeOffres = c.codeOffres || ''; } catch { S.codeEleve = ''; S.codeOffres = ''; } }
+  await Promise.all([chargerConventions(), chargerEtab(), chargerPropositions(), chargerVisites(), chargerOffresProposees()]);
 }
 // Relit la version à jour sur le serveur avant de la modifier (plusieurs professeurs peuvent travailler en même temps).
 async function mutProf(id, fn) {
@@ -32,6 +32,7 @@ function vueProf() {
     case 'carte': return vueCarteProf();
     case 'synthese': return vueSynthese();
     case 'visites': return vueVisites();
+    case 'offres': return vueOffresProf();
     case 'alertes': return vueAlertes();
     default: return vueTableau();
   }

@@ -124,6 +124,8 @@ async function traiter(req, res) {
   const route = m + ' ' + chemin, ip = ipDe(req);
 
   if (route === 'GET /api/public/classes') return envoyer(req, res, 200, getDoc('commun/classes'));
+  // Depot d'offres par les entreprises : seulement avec la version Google (google/Code.gs).
+  if (route === 'POST /api/public/offre' || route === 'GET /api/public/secteurs') return erreur(req, res, 501, 'offre_indisponible');
   if (route === 'GET /api/public/info') return envoyer(req, res, 200, JSON.stringify({ codeEleveRequis: true }));
 
   if (route === 'POST /api/inscription') {
@@ -228,7 +230,8 @@ async function traiter(req, res) {
     let ecriture;
     const me = /^eleve\/([a-f0-9]{12})\/([a-z]+)$/.exec(cle);
     const mp = /^perso\/([a-f0-9]{12})$/.exec(cle);   // espace prive du professeur
-    if (/^commun\/(classes|entreprises|etablissement)$/.test(cle)) ecriture = estProf;
+    if (/^commun\/(classes|entreprises|etablissement|offres)$/.test(cle)) ecriture = estProf;
+    else if (cle === 'commun/offres_proposees') { if (!estProf) return erreur(req, res, 403, 'interdit'); ecriture = true; }
     else if (mp) { if (!estProf || mp[1] !== user.id) return erreur(req, res, 403, 'interdit'); ecriture = true; }
     else if (cle === 'commun/entreprises_proposees') { if (!estProf) return erreur(req, res, 403, 'interdit'); ecriture = true; }
     else if (me && SECTIONS.includes(me[2])) {

@@ -66,6 +66,7 @@ function config() {
     codeEleve: val('CODE_ELEVE', () => 'ELEVE-' + hasard(6).toUpperCase()),
     codeChef: val('CODE_CHEF', () => 'CHEF-' + hasard(10).toUpperCase()),
     codeDdfpt: val('CODE_DDFPT', () => 'DDFPT-' + hasard(8).toUpperCase()),
+    codeOffres: val('CODE_OFFRES', () => hasard(12)),   // dans le lien donne aux entreprises pour deposer une offre
   };
 }
 
@@ -386,6 +387,27 @@ function router(m, chemin, route, b, jeton) {
   if (route === 'GET /api/public/classes') return ok(JSON.parse(getDoc('commun/classes')));
   if (route === 'GET /api/public/info') return ok({ codeEleveRequis: true });
 
+  // Offres de stage deposees par les entreprises (lien public avec code) : elles attendent la validation d'un professeur ou du DDFPT.
+  if (route === 'GET /api/public/secteurs') {
+    const l = (JSON.parse(getDoc('commun/entreprises')) || {}).entreprises || [];
+    return ok(Array.from(new Set(l.map(e => e.secteur).filter(Boolean))).sort());
+  }
+  if (route === 'POST /api/public/offre') {
+    if (String(b.k || '') !== c.codeOffres) return ko(403, 'lien_offre');
+    if (trop('offres_publiques', 40)) return ko(429, 'trop_essais');
+    compter('offres_publiques');
+    const champ = (k, n) => String(b[k] || '').trim().slice(0, n), date = k => /^\d{4}-\d{2}-\d{2}$/.test(String(b[k] || '')) ? b[k] : '';
+    const niveaux = (Array.isArray(b.niveaux) ? b.niveaux : []).filter(n => ['CAP', 'Bac pro', 'BTS'].indexOf(n) >= 0);
+    const o = { id: hasard(12), entreprise: champ('entreprise', 120), adresse: champ('adresse', 200), secteur: champ('secteur', 80), intitule: champ('intitule', 120),
+      description: champ('description', 1500), niveaux: niveaux, debut: date('debut'), fin: date('fin'), places: Math.max(1, Math.min(50, parseInt(b.places, 10) || 1)),
+      contact: champ('contact', 120), tel: champ('tel', 40), email: champ('email', 120), source: 'entreprise', deposeLe: new Date().toISOString() };
+    if (!o.entreprise || !o.adresse || !o.intitule || !niveaux.length || (!o.tel && !o.email)) return ko(400, 'offre_incomplete');
+    const d = JSON.parse(getDoc('commun/offres_proposees')) || { liste: [] };
+    if (d.liste.length >= 300) return ko(409, 'trop_de_propositions');
+    d.liste.push(o); setDoc('commun/offres_proposees', JSON.stringify(d));
+    return ok({ ok: true });
+  }
+
   if (route === 'POST /api/inscription') {
     const role = b.role, prenom = String(b.prenom || '').trim(), ident = String(b.identifiant || '').trim().toLowerCase();
     let nom = String(b.nom || '').trim();
@@ -490,7 +512,7 @@ function router(m, chemin, route, b, jeton) {
   if (route === 'POST /api/deconnexion') return ok({ ok: true });
   if (route === 'GET /api/profs') return ok(comptes().filter(u => u.role === 'prof').map(u => ({ id: u.id, nom: u.nom, prenom: u.prenom })));
 
-  if (route === 'GET /api/admin/codes') return estProf ? ok({ codeEleve: c.codeEleve }) : ko(403, 'interdit');
+  if (route === 'GET /api/admin/codes') return estProf ? ok({ codeEleve: c.codeEleve, codeOffres: c.codeOffres }) : ko(403, 'interdit');
   if (route === 'GET /api/eleves') {
     if (!estProf) return ko(403, 'interdit');
     return ok(comptes().filter(u => u.role === 'eleve').map(u => {
@@ -523,7 +545,8 @@ function router(m, chemin, route, b, jeton) {
     let droitEcriture;
     // Espace prive du professeur : adresse personnelle, noms complets des eleves suivis, horaires des deplacements.
     const mp = /^perso\/([a-f0-9]{12})$/.exec(cle);
-    if (/^commun\/(classes|entreprises|etablissement)$/.test(cle)) droitEcriture = estProf;
+    if (/^commun\/(classes|entreprises|etablissement|offres)$/.test(cle)) droitEcriture = estProf;
+    else if (cle === 'commun/offres_proposees') { if (!estProf) return ko(403, 'interdit'); droitEcriture = true; }
     else if (mp) { if (!estProf || mp[1] !== user.id) return ko(403, 'interdit'); droitEcriture = true; }
     else if (cle === 'commun/entreprises_proposees') { if (!estProf) return ko(403, 'interdit'); droitEcriture = true; }
     else if (me && SECTIONS.indexOf(me[2]) >= 0) {

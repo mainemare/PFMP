@@ -215,13 +215,13 @@ function entete(prof) {
   let nav;
   if (prof) {
     const nu = urgences().filter(e => !e.d.prof.urgence).length + protocolesAValider().filter(({ e }) => estReferentDe(e)).length;
-    const np = (S.propositionsEnt || []).length, ns = missionsASigner().length;
+    const np = (S.propositionsEnt || []).length, ns = missionsASigner().length, no = S.offresProposees.length;
     nav = S.user.role === 'ddfpt'
-      ? [['synthese', '🏫 Vue d’ensemble'], ['tableau', '📊 Élèves'], ['classes', '📅 Classes et dates PFMP'], ['visites', '🗓️ Visites', ns], ['entreprises', '🏢 Entreprises', np], ['carte', '🗺️ Carte'], ['alertes', '🔔 Alertes', nu]]
-      : [['tableau', '📊 Tableau de bord'], ['alertes', '🔔 Alertes', nu], ['visites', '🗓️ Visites', ns], ['carte', '🗺️ Carte'], ['classes', '📅 Classes et dates'], ['entreprises', '🏢 Entreprises', np]];
+      ? [['synthese', '🏫 Vue d’ensemble'], ['tableau', '📊 Élèves'], ['classes', '📅 Classes et dates PFMP'], ['visites', '🗓️ Visites', ns], ['entreprises', '🏢 Entreprises', np], ['offres', '📢 Offres de stage', no], ['carte', '🗺️ Carte'], ['alertes', '🔔 Alertes', nu]]
+      : [['tableau', '📊 Tableau de bord'], ['alertes', '🔔 Alertes', nu], ['visites', '🗓️ Visites', ns], ['carte', '🗺️ Carte'], ['classes', '📅 Classes et dates'], ['entreprises', '🏢 Entreprises', np], ['offres', '📢 Offres de stage', no]];
   } else {
     const d = S.el, nl = d.prof.conseils.filter(c => !d.etat.conseilsLus.includes(c.id)).length;
-    nav = [['accueil', '🏠 Accueil', nl], ['profil', '👤 Mon profil'], ['entreprises', '🏢 Entreprises'], ['suivi', '📞 Mes appels', relancesDues(d).length],
+    nav = [['accueil', '🏠 Accueil', nl], ['profil', '👤 Mon profil'], ['entreprises', '🏢 Entreprises'], ['offres', '📢 Offres de stage', nbOffresEleve()], ['suivi', '📞 Mes appels', relancesDues(d).length],
       ['memento', '📝 Memento'], ['cv', '📄 CV'], ['lettre', '✉️ Lettre'], ['protocole', '🤝 Protocole']];
   }
   return `<header class="top"><div class="logo">🎓 Suivi des stages${prof ? (S.user.role === 'ddfpt' ? ' · Console DDFPT' : ' · Console professeur') : ''}</div>
@@ -270,8 +270,8 @@ async function chargerPublic() {
   try { S.pubClasses = ((await api('GET', '/api/public/classes')) || {}).classes || []; } catch { S.pubClasses = []; }
 }
 async function chargerCommun() {
-  const [cl, en, pr] = await Promise.all([getDoc('commun/classes'), getDoc('commun/entreprises'), api('GET', '/api/profs')]);
-  S.classes = (cl && cl.classes) || []; S.entreprises = (en && en.entreprises) || []; S.profs = pr || [];
+  const [cl, en, pr, of] = await Promise.all([getDoc('commun/classes'), getDoc('commun/entreprises'), api('GET', '/api/profs'), getDoc('commun/offres').catch(() => null)]);
+  S.classes = (cl && cl.classes) || []; S.entreprises = (en && en.entreprises) || []; S.profs = pr || []; S.offres = (of && of.offres) || [];
 }
 async function charger() {
   await chargerCommun();
@@ -288,6 +288,7 @@ function vueEleve() {
   switch (S.vue) {
     case 'profil': return vueProfil();
     case 'entreprises': return vueEntreprises();
+    case 'offres': return vueOffresEleve();
     case 'suivi': return vueSuivi();
     case 'memento': case 'cv': case 'lettre': return vueDoc(S.vue);
     case 'protocole': return vueProtocole();
