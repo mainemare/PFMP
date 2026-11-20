@@ -208,3 +208,15 @@ Limites
     l'appareil de l'eleve et ne figurent que dans le PDF. « Deposer ce CV pour mon professeur » envoie le PDF : le
     professeur l'annote comme un CV depose (section 8).
   Aucune mise a jour de Code.gs n'est necessaire pour cette fonction.
+
+14. LETTRE DE MOTIVATION AVEC MODELES
+  - Page Lettre de l'eleve > « Ecrire ma lettre avec un modele » : 5 modeles (Classique, Bandeau, Aligne, Filet, Pastille),
+    5 couleurs, apercu du PDF.
+  - Choix de l'entreprise parmi les appels de l'eleve (nom, adresse, interlocuteur pre-remplis), objet avec les dates de stage,
+    formule d'appel et formule de politesse accordees.
+  - Methode « Vous / Moi / Nous » + conclusion : consignes et exemples par paragraphe, completes avec l'entreprise, la classe,
+    la filiere et les dates ; passages [entre crochets] a personnaliser ; mots de liaison a inserer d'un clic.
+  - Conseils (nom de l'entreprise cite, paragraphes manquants, vouvoiement, longueur) et correction LanguageTool comme pour le CV.
+  - Coordonnees de l'eleve : les memes que pour le CV, sur son appareil uniquement. « Deposer cette lettre pour mon
+    professeur » envoie le PDF, que le professeur annote.
+  Aucune mise a jour de Code.gs n'est necessaire.

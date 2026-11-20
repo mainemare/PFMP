@@ -210,6 +210,7 @@ function render() {
   if (!prof && S.vue === 'entreprises') afficherCarte();
   if (!prof && S.vue === 'protocole' && typeof majTotaux === 'function') { majTotaux(); initPadProtocole(); }
   if (!prof && S.vue === 'cv' && $('#cv_apercu')) majApercuCV().catch(e => toast(e.message, true));
+  if (!prof && S.vue === 'lettre' && $('#lm_apercu')) majApercuLettre().catch(e => toast(e.message, true));
   if (prof && S.vue === 'carte' && !S.dossier) afficherCarteProf();
 }
 function entete(prof) {
@@ -587,6 +588,7 @@ function lireDoc(type, doc) { for (const [k] of CHAMPS[type]) doc[k] = $('#f_' +
 function vueDoc(type) {
   const doc = S.el[type];
   if (type === 'cv') return vueCV(doc);
+  if (type === 'lettre') return vueLettre(doc);
   if (type !== 'memento') return vueDepot(type, doc);
   return `<section class="carte"><h2>${TITRES[type]}</h2><p class="doux">Ton aide-mémoire pour téléphoner : quelques mots ou un texte pour te présenter personnellement et professionnellement. Il s’affiche dans chaque fiche d’appel.</p>
     <div class="alerte info petit">🔒 N’écris ici ni ton nom de famille, ni ton adresse, ni ton numéro de téléphone.</div>

@@ -325,8 +325,11 @@ function champsTexte() {
   $$('.cv-ligne[data-l="experiences"]').forEach((d, i) => ['.x-poste', '.x-entreprise', '.x-missions'].forEach(c => l.push({ el: $(c, d), nom: `Expérience ${i + 1}` })));
   return l.filter(x => x.el && x.el.value.trim());
 }
-A.cvVerifier = async () => {
-  const champs = champsTexte(); if (!champs.length) return toast('Écris d’abord le contenu de ton CV.', true);
+// Utilisée aussi pour la lettre de motivation : champs = [{ el, nom }], zone = id de l'encadré des résultats.
+let zoneFautes = 'cv_fautes';
+A.cvVerifier = () => verifierTextes(champsTexte(), 'cv_fautes');
+async function verifierTextes(champs, zone) {
+  zoneFautes = zone; if (!champs.length) return toast('Écris d’abord ton texte.', true);
   let texte = ''; const segs = [];
   // Chaque ligne d'un champ (liste, missions) est envoyée comme un paragraphe à part : pas de fausse « phrase » sur plusieurs lignes.
   for (const c of champs) {
@@ -356,9 +359,9 @@ A.cvVerifier = async () => {
     return { el: s2.c.el, nom: s2.c.nom, pos: m.offset - s2.debut + s2.decalage, long: m.length, message: m.message, propositions: (m.replacements || []).slice(0, 3).map(x => x.value), type };
   }).filter(Boolean);
   afficherFautes();
-};
+}
 function afficherFautes() {
-  const z = $('#cv_fautes'); if (!z) return;
+  const z = $('#' + zoneFautes); if (!z) return;
   if (!fautesCV.length) { z.innerHTML = '<div class="alerte info petit">✅ Aucune faute trouvée. Relis quand même ton CV à voix haute !</div>'; return; }
   z.innerHTML = `<div class="fautes"><b>${fautesCV.length} point${fautesCV.length > 1 ? 's' : ''} à vérifier</b>${fautesCV.map((x, i) => {
     const v = x.el.value, avant = v.slice(Math.max(0, x.pos - 25), x.pos), mot = v.slice(x.pos, x.pos + x.long), apres = v.slice(x.pos + x.long, x.pos + x.long + 25);
