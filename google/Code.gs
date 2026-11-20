@@ -350,10 +350,27 @@ const FT_DEFAUT = () => ({ departements: ['76'], motsCles: ['stage', 'stagiaire'
 function jetonFranceTravail() {
   const p = PropertiesService.getScriptProperties(), id = p.getProperty('FT_CLIENT_ID'), secret = p.getProperty('FT_CLIENT_SECRET');
   if (!id || !secret) throw { http: 400, message: 'ft_non_configure' };
-  const r = UrlFetchApp.fetch(FT_JETON, { method: 'post', muteHttpExceptions: true, payload: { grant_type: 'client_credentials', client_id: id, client_secret: secret,
-    scope: p.getProperty('FT_SCOPE') || 'api_offresdemploiv2 o2dsoffre' } });
-  if (r.getResponseCode() !== 200) throw { http: 502, message: 'ft_identifiants' };
-  return JSON.parse(r.getContentText()).access_token;
+  const corps = { grant_type: 'client_credentials', client_id: id.trim(), client_secret: secret.trim(), scope: (p.getProperty('FT_SCOPE') || 'api_offresdemploiv2 o2dsoffre').trim() };
+  const r = UrlFetchApp.fetch(FT_JETON, { method: 'post', muteHttpExceptions: true, followRedirects: false, contentType: 'application/x-www-form-urlencoded',
+    headers: { Accept: 'application/json' }, payload: Object.keys(corps).map(k => k + '=' + encodeURIComponent(corps[k])).join('&') });
+  const j = lireJsonFT(r, 'jeton');
+  if (r.getResponseCode() !== 200 || !j || !j.access_token) { journalFT('jeton', r); throw { http: 502, message: 'ft_identifiants' }; }
+  return j.access_token;
+}
+// Reponse de France Travail : JSON attendu ; sinon on note l'etape, le code HTTP et le debut de la reponse (journal d'execution).
+function lireJsonFT(r, etape) {
+  try { return JSON.parse(r.getContentText()); } catch (e) { journalFT(etape, r); return null; }
+}
+function journalFT(etape, r) {
+  const t = String(r.getContentText() || '').replace(/\s+/g, ' ').slice(0, 300), h = r.getHeaders ? r.getHeaders() : {};
+  Logger.log('France Travail, etape « ' + etape + ' » : HTTP ' + r.getResponseCode() + (h.Location || h.location ? ' -> ' + (h.Location || h.location) : '') + ' : ' + t);
+}
+/** Diagnostic a lancer depuis l'editeur : affiche dans le journal la reponse de France Travail a chaque etape. */
+function testerFranceTravail() {
+  const jeton = jetonFranceTravail();
+  Logger.log('Jeton obtenu (' + jeton.length + ' caracteres).');
+  const r = UrlFetchApp.fetch(FT_RECHERCHE + '?departement=76&motsCles=stage&range=0-4', { headers: { Authorization: 'Bearer ' + jeton, Accept: 'application/json' }, muteHttpExceptions: true });
+  journalFT('recherche', r);
 }
 function niveauxOffreFT(o) {
   const t = [o.intitule, o.description, (o.formations || []).map(f => (f.niveauLibelle || '') + ' ' + (f.domaineLibelle || '')).join(' ')].join(' ').toLowerCase();
@@ -385,8 +402,9 @@ function importerFranceTravail() {
     const r = UrlFetchApp.fetch(FT_RECHERCHE + '?' + q + '&range=0-149', { headers: { Authorization: 'Bearer ' + jeton, Accept: 'application/json' }, muteHttpExceptions: true });
     const code = r.getResponseCode();
     if (code === 204) return;
-    if (code !== 200 && code !== 206) throw { http: 502, message: 'ft_recherche' };
-    (JSON.parse(r.getContentText()).resultats || []).forEach(o => { if (o && o.id && !vus.has('ft-' + o.id)) trouvees.set('ft-' + o.id, versOffre(o)); });
+    const j = lireJsonFT(r, 'recherche ' + q);
+    if ((code !== 200 && code !== 206) || !j) { if (j) journalFT('recherche ' + q, r); throw { http: 502, message: 'ft_recherche' }; }
+    (j.resultats || []).forEach(o => { if (o && o.id && !vus.has('ft-' + o.id)) trouvees.set('ft-' + o.id, versOffre(o)); });
   });
   const d = JSON.parse(getDoc('commun/offres_proposees')) || { liste: [] };
   const deja = new Set(d.liste.map(o => o.id)), nouvelles = Array.from(trouvees.values()).filter(o => !deja.has(o.id)).slice(0, Math.max(0, 300 - d.liste.length));
