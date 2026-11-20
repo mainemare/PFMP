@@ -194,3 +194,17 @@ Limites
   Travail), l'autre est quand meme importee et l'erreur s'affiche dans la console.
   Destination Metier (agence de l'orientation et des metiers de Normandie) n'a pas d'API : un lien est affiche aux eleves
   dans la rubrique Offres de stage.
+
+13. CV AVEC MODELES, CONSEILS ET CORRECTION
+  - Page CV de l'eleve > « Creer mon CV avec un modele » : 5 modeles (Classique, Moderne, Bandeau, Compact, Creatif) et
+    5 couleurs, apercu du PDF a cote du formulaire.
+  - Conseils a chaque etape, exemples de profil a personnaliser, idees de competences selon la filiere de la classe
+    (electricite, maintenance, commerce, restauration, accompagnement, logistique, gestion, energie, menuiserie),
+    qualites et verbes d'action a ajouter d'un clic, liste « Pour ameliorer ton CV ».
+  - « Verifier l'orthographe » : correction orthographique et grammaticale par le service LanguageTool
+    (api.languagetool.org). Seuls les textes du CV sont envoyes, jamais le nom ni les coordonnees. Limite : environ
+    20 verifications par minute.
+  - Le contenu du CV est enregistre dans le dossier de l'eleve ; le nom, l'adresse, le telephone et l'e-mail restent sur
+    l'appareil de l'eleve et ne figurent que dans le PDF. « Deposer ce CV pour mon professeur » envoie le PDF : le
+    professeur l'annote comme un CV depose (section 8).
+  Aucune mise a jour de Code.gs n'est necessaire pour cette fonction.
