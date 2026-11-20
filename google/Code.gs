@@ -390,10 +390,8 @@ function versOffre(o) {
     contact: String(c.nom || '').slice(0, 120), tel: String(c.telephone || '').slice(0, 40), email: String(c.courriel || '').slice(0, 120), lien: /^https:\/\//.test(lien) ? lien : '',
     typeContrat: String(o.typeContratLibelle || o.typeContrat || '') + (o.alternance ? ' · alternance' : ''), deposeLe: o.dateCreation || new Date().toISOString() };
 }
-function importerFranceTravail() {
-  const cfg = Object.assign(FT_DEFAUT(), JSON.parse(getDoc('commun/francetravail')) || {});
-  const jeton = jetonFranceTravail(), vus = new Set(cfg.vus || []), trouvees = new Map();
-  const recherches = [];
+function chercherFranceTravail(cfg, vus, trouvees) {
+  const jeton = jetonFranceTravail(), recherches = [];
   cfg.departements.forEach(d => {
     cfg.motsCles.forEach(m => recherches.push('departement=' + encodeURIComponent(d) + '&motsCles=' + encodeURIComponent(m)));
     if (cfg.alternance) recherches.push('departement=' + encodeURIComponent(d) + '&natureContrat=E2');   // contrats d'apprentissage (BTS en alternance)
@@ -406,17 +404,63 @@ function importerFranceTravail() {
     if ((code !== 200 && code !== 206) || !j) { if (j) journalFT('recherche ' + q, r); throw { http: 502, message: 'ft_recherche' }; }
     (j.resultats || []).forEach(o => { if (o && o.id && !vus.has('ft-' + o.id)) trouvees.set('ft-' + o.id, versOffre(o)); });
   });
+}
+
+/* ---------- Offres en apprentissage : API de l'Etat (La bonne alternance), api.apprentissage.beta.gouv.fr ----------
+ * Cle d'API gratuite (compte sur le site) : Propriete du script LBA_API_KEY. */
+const LBA_RECHERCHE = 'https://api.apprentissage.beta.gouv.fr/api/job/v1/search';
+const NIVEAU_EUROPEEN = { '3': 'CAP', '4': 'Bac pro', '5': 'BTS' };
+function versOffreLba(j) {
+  const w = j.workplace || {}, loc = w.location || {}, of = j.offer || {}, ap = j.apply || {}, ct = j.contract || {}, pt = (loc.geopoint && loc.geopoint.coordinates) || [];
+  const niv = of.target_diploma && NIVEAU_EUROPEEN[of.target_diploma.european];
+  const exp = of.publication && of.publication.expiration ? String(of.publication.expiration).slice(0, 10) : new Date(Date.now() + 45 * 864e5).toISOString().slice(0, 10);
+  return { id: 'lba-' + j.identifier.id, source: 'apprentissage', entreprise: String(w.name || w.brand || w.legal_name || 'Entreprise (voir l’offre)').slice(0, 120),
+    adresse: String(loc.address || '').slice(0, 200), lat: pt.length === 2 ? +pt[1] : null, lon: pt.length === 2 ? +pt[0] : null,
+    secteur: String((w.domain && w.domain.naf && w.domain.naf.label) || '').slice(0, 80), intitule: String(of.title || '').slice(0, 120), description: String(of.description || '').slice(0, 1500),
+    niveaux: niv ? [niv] : ['CAP', 'Bac pro', 'BTS'], debut: ct.start ? String(ct.start).slice(0, 10) : '', fin: '', expireLe: exp, places: +of.opening_count || 1,
+    contact: '', tel: String(ap.phone || '').slice(0, 40), email: '', lien: /^https:\/\//.test(ap.url || '') ? ap.url : '',
+    typeContrat: 'Apprentissage' + (of.target_diploma && of.target_diploma.label ? ' · ' + of.target_diploma.label : '') + (ct.duration ? ' · ' + ct.duration + ' mois' : ''),
+    deposeLe: (of.publication && of.publication.creation) || new Date().toISOString() };
+}
+function chercherApprentissage(cfg, vus, trouvees) {
+  const cle = PropertiesService.getScriptProperties().getProperty('LBA_API_KEY');
+  if (!cle) throw { http: 400, message: 'lba_non_configure' };
+  cfg.departements.forEach(d => {
+    const r = UrlFetchApp.fetch(LBA_RECHERCHE + '?departements=' + encodeURIComponent(d), { headers: { Authorization: 'Bearer ' + cle.trim(), Accept: 'application/json' }, muteHttpExceptions: true });
+    const j = lireJsonFT(r, 'apprentissage ' + d);
+    if (r.getResponseCode() !== 200 || !j) { if (j) journalFT('apprentissage ' + d, r); throw { http: 502, message: r.getResponseCode() === 401 || r.getResponseCode() === 403 ? 'lba_cle' : 'lba_recherche' }; }
+    (j.jobs || []).forEach(o => { if (o && o.identifier && o.identifier.id && !vus.has('lba-' + o.identifier.id)) trouvees.set('lba-' + o.identifier.id, versOffreLba(o)); });
+  });
+}
+
+function importerFranceTravail() {
+  const cfg = Object.assign(FT_DEFAUT(), JSON.parse(getDoc('commun/francetravail')) || {});
+  const p = PropertiesService.getScriptProperties(), vus = new Set(cfg.vus || []), trouvees = new Map(), erreurs = [];
+  // Chaque source est independante : une panne de l'une n'empeche pas l'import de l'autre.
+  if (p.getProperty('FT_CLIENT_ID')) { try { chercherFranceTravail(cfg, vus, trouvees); } catch (e) { erreurs.push('France Travail : ' + (e && e.message || e)); } }
+  if (cfg.apprentissage !== false && p.getProperty('LBA_API_KEY')) { try { chercherApprentissage(cfg, vus, trouvees); } catch (e) { erreurs.push('Apprentissage : ' + (e && e.message || e)); } }
+  if (!p.getProperty('FT_CLIENT_ID') && !p.getProperty('LBA_API_KEY')) throw { http: 400, message: 'ft_non_configure' };
   const d = JSON.parse(getDoc('commun/offres_proposees')) || { liste: [] };
   const deja = new Set(d.liste.map(o => o.id)), nouvelles = Array.from(trouvees.values()).filter(o => !deja.has(o.id)).slice(0, Math.max(0, 300 - d.liste.length));
   d.liste = d.liste.concat(nouvelles);
   setDoc('commun/offres_proposees', JSON.stringify(d));
   nouvelles.forEach(o => vus.add(o.id));
   cfg.vus = Array.from(vus).slice(-3000);
-  cfg.dernier = { date: new Date().toISOString(), nouvelles: nouvelles.length, trouvees: trouvees.size };
+  cfg.dernier = { date: new Date().toISOString(), nouvelles: nouvelles.length, trouvees: trouvees.size, erreurs: erreurs };
   setDoc('commun/francetravail', JSON.stringify(cfg));
+  if (erreurs.length) Logger.log('Import : ' + erreurs.join(' ; '));
   return cfg.dernier;
 }
-/** A lancer une fois depuis l'editeur, apres avoir renseigne FT_CLIENT_ID et FT_CLIENT_SECRET :
+/** Diagnostic a lancer depuis l'editeur : interroge l'API apprentissage pour le premier departement. */
+function testerApprentissage() {
+  const cle = PropertiesService.getScriptProperties().getProperty('LBA_API_KEY');
+  if (!cle) { Logger.log('Ajoutez d’abord la propriete du script LBA_API_KEY.'); return; }
+  const r = UrlFetchApp.fetch(LBA_RECHERCHE + '?departements=76', { headers: { Authorization: 'Bearer ' + cle.trim(), Accept: 'application/json' }, muteHttpExceptions: true });
+  const j = lireJsonFT(r, 'apprentissage');
+  Logger.log(j && j.jobs ? 'API apprentissage : ' + j.jobs.length + ' offre(s) dans le 76.' : 'Reponse inattendue (voir ci-dessus).');
+  if (!j || !j.jobs) journalFT('apprentissage', r);
+}
+/** A lancer une fois depuis l'editeur, apres avoir renseigne FT_CLIENT_ID et FT_CLIENT_SECRET et/ou LBA_API_KEY :
  *  autorise l'acces a Internet, fait un premier import et programme un import chaque matin. */
 function activerImportFranceTravail() {
   ScriptApp.getProjectTriggers().filter(t => t.getHandlerFunction() === 'importQuotidienFranceTravail').forEach(t => ScriptApp.deleteTrigger(t));
@@ -553,14 +597,15 @@ function router(m, chemin, route, b, jeton) {
   if (route === 'GET /api/francetravail/etat') {
     if (!estProf) return ko(403, 'interdit');
     const p = PropertiesService.getScriptProperties(), cfg = Object.assign(FT_DEFAUT(), JSON.parse(getDoc('commun/francetravail')) || {});
-    return ok({ configure: !!(p.getProperty('FT_CLIENT_ID') && p.getProperty('FT_CLIENT_SECRET')), departements: cfg.departements, motsCles: cfg.motsCles, alternance: cfg.alternance, dernier: cfg.dernier });
+    return ok({ configure: !!(p.getProperty('FT_CLIENT_ID') && p.getProperty('FT_CLIENT_SECRET')), lbaConfigure: !!p.getProperty('LBA_API_KEY'), apprentissage: cfg.apprentissage !== false,
+      departements: cfg.departements, motsCles: cfg.motsCles, alternance: cfg.alternance, dernier: cfg.dernier });
   }
   if (route === 'POST /api/francetravail/reglages') {
     if (!estProf) return ko(403, 'interdit');
     const cfg = Object.assign(FT_DEFAUT(), JSON.parse(getDoc('commun/francetravail')) || {});
     cfg.departements = (Array.isArray(b.departements) ? b.departements : []).map(String).filter(x => /^(\d{2,3}|2[AB])$/.test(x)).slice(0, 5);
     cfg.motsCles = (Array.isArray(b.motsCles) ? b.motsCles : []).map(x => String(x).trim().slice(0, 40)).filter(Boolean).slice(0, 8);
-    cfg.alternance = !!b.alternance;
+    cfg.alternance = !!b.alternance; cfg.apprentissage = b.apprentissage !== false;
     if (!cfg.departements.length) return ko(400, 'invalide');
     setDoc('commun/francetravail', JSON.stringify(cfg));
     return ok({ ok: true });

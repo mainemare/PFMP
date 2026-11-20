@@ -181,3 +181,16 @@ Limites
   stagiaire), contrats d'apprentissage (BTS), bouton « Importer maintenant ». Les offres trouvees arrivent dans les offres a
   verifier (badge France Travail) : « Publier », « Modifier puis publier », ou tout publier / tout ecarter. Le niveau est
   deduit du texte de l'offre. Une offre France Travail reste visible 45 jours ; l'eleve a un bouton « Voir l'offre et postuler ».
+
+12. IMPORT DES OFFRES EN APPRENTISSAGE (LA BONNE ALTERNANCE)
+  1. Creez un compte gratuit sur https://api.apprentissage.beta.gouv.fr (« Se connecter » / « Creer un compte »), puis
+     generez une cle d'API dans votre profil (/fr/compte/profil). Copiez-la.
+  2. Apps Script > Parametres du projet > Proprietes du script : ajoutez LBA_API_KEY (la cle).
+  3. Mettez a jour Code.gs, lancez « testerApprentissage » : le journal doit indiquer le nombre d'offres trouvees dans le 76.
+  4. Si l'import automatique n'est pas encore programme, lancez « activerImportFranceTravail » (il gere les deux sources),
+     puis redeployez une Nouvelle version.
+  Les offres en apprentissage (CAP, bac pro, BTS en alternance) arrivent dans les offres a verifier avec le badge
+  « Apprentissage » ; le niveau vient du diplome indique par l'offre. Si une source est en panne (par exemple France
+  Travail), l'autre est quand meme importee et l'erreur s'affiche dans la console.
+  Destination Metier (agence de l'orientation et des metiers de Normandie) n'a pas d'API : un lien est affiche aux eleves
+  dans la rubrique Offres de stage.

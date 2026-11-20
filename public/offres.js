@@ -7,7 +7,9 @@ S.offres = []; S.offresProposees = []; S.fo = { niveau: null, secteur: '', zones
 const NIVEAUX = ['CAP', 'Bac pro', 'BTS'];
 const offreActive = o => (!o.fin || o.fin >= today()) && (!o.expireLe || o.expireLe >= today());
 const lienSurOffre = u => /^https:\/\/[^\s"'<>]+$/.test(u || '') ? u : '';
-const badgeSource = o => o.source === 'france_travail' ? '<span class="badge" style="background:#1d4ed8">France Travail</span>' : '';
+const badgeSource = o => o.source === 'france_travail' ? '<span class="badge" style="background:#1d4ed8">France Travail</span>'
+  : o.source === 'apprentissage' ? '<span class="badge" style="background:#0f766e">Apprentissage</span>' : '';
+const externe = o => o.source === 'france_travail' || o.source === 'apprentissage';
 async function chargerOffresProposees() {
   try { S.offresProposees = ((await getDoc('commun/offres_proposees')) || {}).liste || []; } catch { S.offresProposees = []; }
   try { S.ft = await api('GET', '/api/francetravail/etat'); } catch { S.ft = null; }
@@ -23,12 +25,12 @@ function vueOffresProf() {
   const nbEleves = o => S.eleves.filter(e => e.d.demandes.liste.some(x => x.offreId === o.id)).length;
   return `${l.length ? `<section class="carte propositions"><h2>🆕 Offres déposées par des entreprises (${l.length})</h2>
       <p class="doux petit">Vérifiez chaque offre (et localisez l’adresse) avant de la publier : elle sera alors visible par les élèves du niveau indiqué.</p>
-      ${l.some(o => o.source === 'france_travail') ? `<div class="actions" style="margin-top:0"><button class="btn mini sec" data-a="ofToutFT" data-v="publier">📢 Publier toutes les offres France Travail</button><button class="btn mini danger" data-a="ofToutFT" data-v="refuser">Écarter toutes les offres France Travail</button></div>` : ''}
+      ${l.some(externe) ? `<div class="actions" style="margin-top:0"><button class="btn mini sec" data-a="ofToutFT" data-v="publier">📢 Publier toutes les offres importées</button><button class="btn mini danger" data-a="ofToutFT" data-v="refuser">Écarter toutes les offres importées</button></div>` : ''}
       ${l.map(o => `<div class="offre"><div class="offre-tete"><b>${esc(o.intitule)}</b> ${badgesNiveaux(o)} ${badgeSource(o)}${o.typeContrat ? ` <span class="petit doux">${esc(o.typeContrat)}</span>` : ''}</div>
         <div>🏢 <b>${esc(o.entreprise)}</b> — ${esc(o.adresse)}${o.secteur ? ` · ${esc(o.secteur)}` : ''}</div>
         <div class="petit">📅 ${esc(periodeOffre(o))} · ${o.places} stagiaire(s) · 👤 ${esc([o.contact, o.tel, o.email].filter(Boolean).join(' · '))}</div>
-        ${o.description ? `<p class="petit">${esc(o.description.length > 400 ? o.description.slice(0, 400) + '…' : o.description)}</p>` : ''}<div class="petit doux">${o.source === 'france_travail' ? 'Publiée sur France Travail' : 'Déposée'} le ${fmtDT(o.deposeLe)}${lienSurOffre(o.lien) ? ` · <a href="${esc(o.lien)}" target="_blank" rel="noopener">voir l’offre d’origine</a>` : ''}</div>
-        <div class="actions">${o.source === 'france_travail' ? `<button class="btn mini" data-a="ofPublierDirect" data-id="${o.id}">📢 Publier</button><button class="btn mini sec" data-a="ofEditer" data-prop="${o.id}">Modifier puis publier</button>` : `<button class="btn mini" data-a="ofEditer" data-prop="${o.id}">✅ Vérifier et publier</button>`}<button class="btn mini danger" data-a="ofRefuser" data-id="${o.id}">Refuser</button></div></div>`).join('')}</section>` : ''}
+        ${o.description ? `<p class="petit">${esc(o.description.length > 400 ? o.description.slice(0, 400) + '…' : o.description)}</p>` : ''}<div class="petit doux">${o.source === 'france_travail' ? 'Publiée sur France Travail' : o.source === 'apprentissage' ? 'Publiée sur La bonne alternance' : 'Déposée'} le ${fmtDT(o.deposeLe)}${lienSurOffre(o.lien) ? ` · <a href="${esc(o.lien)}" target="_blank" rel="noopener">voir l’offre d’origine</a>` : ''}</div>
+        <div class="actions">${externe(o) ? `<button class="btn mini" data-a="ofPublierDirect" data-id="${o.id}">📢 Publier</button><button class="btn mini sec" data-a="ofEditer" data-prop="${o.id}">Modifier puis publier</button>` : `<button class="btn mini" data-a="ofEditer" data-prop="${o.id}">✅ Vérifier et publier</button>`}<button class="btn mini danger" data-a="ofRefuser" data-id="${o.id}">Refuser</button></div></div>`).join('')}</section>` : ''}
     <section class="carte"><h2>🔗 Lien à donner aux entreprises</h2>
       <p class="doux petit">Les entreprises (partenaires, tuteurs, entreprises de la base) décrivent leur offre de stage avec ce lien, sans compte. Vous la vérifiez avant publication.</p>
       ${lien ? `<div class="ligne"><input id="of_lien" value="${esc(lien)}" readonly aria-label="Lien pour déposer une offre"><button class="btn sec" data-a="ofCopier">📋 Copier</button></div>
@@ -66,7 +68,7 @@ A.ofEditer = el => {
       <label>Places<input type="number" id="of_places" min="1" max="50" value="${esc(o.places || 1)}"></label></div>
     <label>Description<textarea id="of_desc" rows="3">${esc(o.description)}</textarea></label>
     <div class="deux"><label>Contact<input id="of_contact" value="${esc(o.contact)}"></label><label>Téléphone<input id="of_tel" value="${esc(o.tel)}"></label><label>E-mail<input id="of_mail" value="${esc(o.email)}"></label></div>
-    ${dansBase ? '' : `<label class="choix" style="margin-top:8px"><input type="checkbox" id="of_base" ${o.source === 'france_travail' ? '' : 'checked'}>Ajouter aussi cette entreprise à la base d’entreprises</label>`}
+    ${dansBase ? '' : `<label class="choix" style="margin-top:8px"><input type="checkbox" id="of_base" ${externe(o) ? '' : 'checked'}>Ajouter aussi cette entreprise à la base d’entreprises</label>`}
     <div class="actions"><button class="btn" data-a="ofSauver" data-id="${esc(prop ? '' : o.id)}" data-prop="${esc(prop ? prop.id : '')}">${prop || !o.id ? '📢 Publier l’offre' : 'Enregistrer'}</button></div>`, true);
 };
 A.ofSauver = async el => {
@@ -119,6 +121,7 @@ function vueOffresEleve() {
   const pris = new Set(d.demandes.liste.map(x => x.offreId).filter(Boolean));
   return `<section class="carte"><h2>📢 Offres de stage</h2>
     <p class="doux">Des entreprises proposent des stages aux élèves du lycée. Ajoute celles qui t’intéressent à tes appels, puis contacte-les rapidement : les places partent vite.</p>
+    <p class="petit">🔎 À voir aussi : <a href="https://www.destination-metier.fr/" target="_blank" rel="noopener">Destination Métier</a> (agence de l’orientation et des métiers de Normandie) · <a href="https://labonnealternance.apprentissage.beta.gouv.fr/" target="_blank" rel="noopener">La bonne alternance</a> (apprentissage).</p>
     <div class="deux"><label>Niveau<select data-c="foNiveau"><option value="">Tous les niveaux</option>${NIVEAUX.map(n => `<option ${n === niv ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
       ${secteurs.length ? `<label>Secteur<select data-c="foSecteur"><option value="">Tous les secteurs</option>${secteurs.map(s => `<option ${s === S.fo.secteur ? 'selected' : ''}>${esc(s)}</option>`).join('')}</select></label>` : ''}
       <label class="choix" style="align-self:end"><input type="checkbox" data-c="foZones" ${S.fo.zones ? 'checked' : ''}>Seulement près de mes communes</label></div></section>
@@ -148,25 +151,27 @@ const nbOffresEleve = () => S.el ? offresEleve(S.el).filter(x => !S.el.demandes.
 /* ---------- Import des offres France Travail ---------- */
 function carteFranceTravail() {
   const f = S.ft; if (!f) return '';
-  const der = f.dernier;
-  return `<section class="carte"><h2>🇫🇷 Offres France Travail</h2>
-    ${f.configure ? `<p class="petit">✅ Connexion à France Travail configurée. Import automatique chaque matin s’il a été programmé dans Apps Script.
-        ${der ? `Dernier import le <b>${fmtDT(der.date)}</b> : <b>${der.nouvelles} nouvelle(s) offre(s)</b> à vérifier.` : 'Aucun import pour le moment.'}</p>`
-      : '<div class="alerte attention petit">La connexion à France Travail n’est pas encore configurée : créez une application sur francetravail.io (API « Offres d’emploi v2 »), puis renseignez FT_CLIENT_ID et FT_CLIENT_SECRET dans les propriétés du script Google (voir le guide, section 11).</div>'}
+  const der = f.dernier, aucun = !f.configure && !f.lbaConfigure;
+  return `<section class="carte"><h2>⬇️ Offres importées automatiquement</h2>
+    <ul class="ag-liste">
+      <li>${f.configure ? '✅' : '⬜'} <b>France Travail</b> — ${f.configure ? 'connexion configurée' : 'non configurée : FT_CLIENT_ID et FT_CLIENT_SECRET (guide, section 11)'}</li>
+      <li>${f.lbaConfigure ? '✅' : '⬜'} <b>Apprentissage</b> (La bonne alternance, api.apprentissage.beta.gouv.fr) — ${f.lbaConfigure ? 'clé configurée' : 'non configurée : LBA_API_KEY (guide, section 12)'}</li></ul>
+    ${der ? `<p class="petit">Dernier import le <b>${fmtDT(der.date)}</b> : <b>${der.nouvelles} nouvelle(s) offre(s)</b> à vérifier.${(der.erreurs || []).length ? `<br><span style="color:#b91c1c">⚠️ ${esc(der.erreurs.join(' ; '))}</span>` : ''}</p>` : '<p class="petit doux">Aucun import pour le moment. Import automatique chaque matin vers 6 h une fois programmé dans Apps Script.</p>'}
     <div class="deux"><label>Départements <span class="doux petit">(séparés par des virgules)</span><input id="ft_dep" value="${esc((f.departements || []).join(', '))}" placeholder="76, 27"></label>
-      <label>Mots-clés <span class="doux petit">(une recherche par mot-clé)</span><input id="ft_mots" value="${esc((f.motsCles || []).join(', '))}" placeholder="stage, stagiaire"></label></div>
-    <label class="choix"><input type="checkbox" id="ft_alt" ${f.alternance ? 'checked' : ''}>Inclure les contrats d’apprentissage (utile pour les BTS en alternance)</label>
-    <p class="doux petit">Les offres trouvées arrivent dans les offres à vérifier ; une offre déjà publiée ou écartée n’est pas reproposée. Le niveau (CAP, bac pro, BTS) est déduit du texte de l’offre : vérifiez-le.</p>
-    <div class="actions"><button class="btn sec" data-a="ftReglages">Enregistrer les réglages</button>${f.configure ? '<button class="btn" data-a="ftImporter">⬇️ Importer maintenant</button>' : ''}</div></section>`;
+      <label>Mots-clés France Travail <span class="doux petit">(une recherche par mot-clé)</span><input id="ft_mots" value="${esc((f.motsCles || []).join(', '))}" placeholder="stage, stagiaire"></label></div>
+    <label class="choix"><input type="checkbox" id="ft_alt" ${f.alternance ? 'checked' : ''}>France Travail : inclure les contrats d’apprentissage</label>
+    <label class="choix"><input type="checkbox" id="ft_lba" ${f.apprentissage !== false ? 'checked' : ''}>Importer les offres en apprentissage (CAP, bac pro, BTS en alternance)</label>
+    <p class="doux petit">Les offres trouvées arrivent dans les offres à vérifier ; une offre déjà publiée ou écartée n’est pas reproposée. Vérifiez le niveau (CAP, bac pro, BTS) avant de publier.</p>
+    <div class="actions"><button class="btn sec" data-a="ftReglages">Enregistrer les réglages</button>${aucun ? '' : '<button class="btn" data-a="ftImporter">⬇️ Importer maintenant</button>'}</div></section>`;
 }
 A.ftReglages = async () => {
   const liste = id => val(id).split(/[,;]/).map(x => x.trim()).filter(Boolean);
-  await api('POST', '/api/francetravail/reglages', { departements: liste('ft_dep'), motsCles: liste('ft_mots'), alternance: $('#ft_alt').checked });
+  await api('POST', '/api/francetravail/reglages', { departements: liste('ft_dep'), motsCles: liste('ft_mots'), alternance: $('#ft_alt').checked, apprentissage: $('#ft_lba').checked });
   S.ft = await api('GET', '/api/francetravail/etat'); render(); toast('Réglages enregistrés');
 };
 A.ftImporter = async () => {
   const r = await api('POST', '/api/francetravail/importer');
-  await chargerOffresProposees(); render(); toast(r.nouvelles ? `${r.nouvelles} nouvelle(s) offre(s) à vérifier` : 'Aucune nouvelle offre depuis le dernier import');
+  await chargerOffresProposees(); render(); toast((r.nouvelles ? `${r.nouvelles} nouvelle(s) offre(s) à vérifier` : 'Aucune nouvelle offre depuis le dernier import') + ((r.erreurs || []).length ? ' — ' + r.erreurs.join(' ; ') : ''), (r.erreurs || []).length > 0);
 };
 async function publierOffres(liste) {
   await mutCommun('offres', l => {
@@ -184,9 +189,9 @@ A.ofPublierDirect = async el => {
   await publierOffres([o]); render(); toast('Offre publiée');
 };
 A.ofToutFT = async el => {
-  const l = S.offresProposees.filter(o => o.source === 'france_travail'), pub = el.dataset.v === 'publier';
-  if (!l.length || !confirm(`${pub ? 'Publier' : 'Écarter'} les ${l.length} offre(s) France Travail en attente ?`)) return;
+  const l = S.offresProposees.filter(externe), pub = el.dataset.v === 'publier';
+  if (!l.length || !confirm(`${pub ? 'Publier' : 'Écarter'} les ${l.length} offre(s) importée(s) en attente ?`)) return;
   if (pub) await publierOffres(l);
-  else { const d = (await getDoc('commun/offres_proposees')) || { liste: [] }; d.liste = (d.liste || []).filter(x => x.source !== 'france_travail'); await putDoc('commun/offres_proposees', d); S.offresProposees = d.liste; }
+  else { const d = (await getDoc('commun/offres_proposees')) || { liste: [] }; d.liste = (d.liste || []).filter(x => !externe(x)); await putDoc('commun/offres_proposees', d); S.offresProposees = d.liste; }
   render(); toast(pub ? 'Offres publiées' : 'Offres écartées');
 };
