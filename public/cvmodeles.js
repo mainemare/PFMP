@@ -362,7 +362,7 @@ async function verifierTextes(champs, zone) {
 }
 function afficherFautes() {
   const z = $('#' + zoneFautes); if (!z) return;
-  if (!fautesCV.length) { z.innerHTML = '<div class="alerte info petit">✅ Aucune faute trouvée. Relis quand même ton CV à voix haute !</div>'; return; }
+  if (!fautesCV.length) { z.innerHTML = '<div class="alerte info petit">✅ Aucune faute trouvée. Relis quand même ton texte à voix haute !</div>'; return; }
   z.innerHTML = `<div class="fautes"><b>${fautesCV.length} point${fautesCV.length > 1 ? 's' : ''} à vérifier</b>${fautesCV.map((x, i) => {
     const v = x.el.value, avant = v.slice(Math.max(0, x.pos - 25), x.pos), mot = v.slice(x.pos, x.pos + x.long), apres = v.slice(x.pos + x.long, x.pos + x.long + 25);
     return `<div class="faute"><div class="petit doux">${esc(x.nom)} · ${x.type === 'misspelling' ? 'orthographe' : x.type === 'typographical' ? 'typographie' : 'grammaire'}</div>

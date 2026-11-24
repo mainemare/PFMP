@@ -222,6 +222,9 @@ Limites
   Aucune mise a jour de Code.gs n'est necessaire.
 
 15. JOURNAL DE BORD DU STAGE
+  - Chaque journee precise le chantier : lieu, type (logement, bureaux / tertiaire, industriel…), neuf ou renovation,
+    duree approximative (repris du jour precedent), et ce que l'eleve a fait en autonomie. Une journee n'est complete
+    qu'avec ces informations, 3 lignes de texte precis (vocabulaire technique) et la photo.
   - Eleve : rubrique « Journal de bord ». Chaque jour de stage (du lundi au samedi, d'apres les dates de la classe ou les
     dates derogatoires) : au moins 3 lignes de texte et une photo. Jours affiches en couleur (complet, incomplet, a remplir,
     non travaille). Un jour non travaille (repos, ferie, absence) se declare avec son motif. Rappel sur l'accueil pendant
