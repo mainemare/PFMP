@@ -220,3 +220,18 @@ Limites
   - Coordonnees de l'eleve : les memes que pour le CV, sur son appareil uniquement. « Deposer cette lettre pour mon
     professeur » envoie le PDF, que le professeur annote.
   Aucune mise a jour de Code.gs n'est necessaire.
+
+15. JOURNAL DE BORD DU STAGE
+  - Eleve : rubrique « Journal de bord ». Chaque jour de stage (du lundi au samedi, d'apres les dates de la classe ou les
+    dates derogatoires) : au moins 3 lignes de texte et une photo. Jours affiches en couleur (complet, incomplet, a remplir,
+    non travaille). Un jour non travaille (repos, ferie, absence) se declare avec son motif. Rappel sur l'accueil pendant
+    le stage ; verification de l'orthographe comme pour le CV.
+  - Photos : reduites sur l'appareil, rangees dans le dossier prive du Drive (« Suivi des stages - CV et lettres »),
+    jamais partagees ; mises a la corbeille avec le compte de l'eleve. Conseil donne a l'eleve : accord du tuteur, pas de
+    personne photographiee sans son accord.
+  - Professeur : dossier de l'eleve > onglet « Journal de bord » (n = journees a lire). Pour chaque jour : texte, photo,
+    commentaire, correction du texte (avec verification de l'orthographe), avis « Valide » ou « A reprendre ». L'eleve peut
+    reprendre la correction dans son texte.
+  - Dispense de photo : en haut de l'onglet, avec le motif (lieu de stage interdisant les photos). La photo devient facultative.
+  - Le DDFPT n'a pas cet onglet.
+  Mise en place : mettez a jour Code.gs puis Deployer > Gerer les deploiements > (crayon) > Nouvelle version.

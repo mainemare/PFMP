@@ -8,7 +8,7 @@
  */
 const FEUILLE = 'donnees';
 const MORCEAU = 40000;                       // une cellule Google Sheets contient au plus 50 000 caracteres
-const SECTIONS = ['profil', 'cv', 'lettre', 'memento', 'demandes', 'journal', 'etat', 'prof'];
+const SECTIONS = ['profil', 'cv', 'lettre', 'memento', 'demandes', 'journal', 'etat', 'prof', 'bord'];
 const SESSION_MS = 12 * 3600 * 1000;
 const ITERATIONS = 300;
 
@@ -178,6 +178,42 @@ function supprimerFichiersDe(eleveId) {
     const m = JSON.parse(getDoc('eleve/' + eleveId + '/fichier-' + t));
     if (m && m.id) { try { DriveApp.getFileById(m.id).setTrashed(true); } catch (e) { /* deja supprime */ } }
   });
+  // Photos du journal de bord
+  table().m.forEach((x, cle) => {
+    if (cle.indexOf('eleve/' + eleveId + '/photo-') !== 0 || !x.texte || x.texte === 'null') return;
+    const m = JSON.parse(x.texte); if (m && m.id) { try { DriveApp.getFileById(m.id).setTrashed(true); } catch (e) { /* deja supprime */ } }
+  });
+}
+
+/* ---------- Journal de bord : une photo par jour de stage, dans le meme dossier prive du Drive ----------
+ * Le texte est dans la section « bord » du dossier de l'eleve ; la photo est rangee dans le Drive et son identifiant
+ * garde sous eleve/<id>/photo-AAAA-MM-JJ (cle inaccessible par /api/doc). */
+function routesJournal(route, b, user, estProf) {
+  const date = String(b.date || '');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return ko(400, 'invalide');
+  const eleveId = user.role === 'eleve' ? user.id : String(b.eleveId || '');
+  if (!/^[a-f0-9]{12}$/.test(eleveId) || (!estProf && eleveId !== user.id)) return ko(403, 'interdit');
+  const cle = 'eleve/' + eleveId + '/photo-' + date, meta = JSON.parse(getDoc(cle));
+  if (route === 'POST /api/journal/photo/lire') {
+    if (!meta || !meta.id) return ko(404, 'introuvable');
+    const blob = DriveApp.getFileById(meta.id).getBlob();
+    return ok({ img: 'data:' + (meta.type || 'image/jpeg') + ';base64,' + Utilities.base64Encode(blob.getBytes()), date: meta.date });
+  }
+  if (user.role !== 'eleve') return ko(403, 'interdit');
+  if (route === 'POST /api/journal/photo') {
+    const m = /^data:(image\/(?:jpeg|png));base64,([A-Za-z0-9+/=]+)$/.exec(String(b.img || ''));
+    if (!m || m[2].length > 2000000) return ko(400, 'photo_invalide');
+    if (meta && meta.id) { try { DriveApp.getFileById(meta.id).setTrashed(true); } catch (e) { /* deja supprime */ } }
+    const f = dossierFichiers().createFile(Utilities.newBlob(Utilities.base64Decode(m[2]), m[1], eleveId + '-journal-' + date + (m[1] === 'image/png' ? '.png' : '.jpg')));
+    setDoc(cle, JSON.stringify({ id: f.getId(), type: m[1], date: new Date().toISOString() }));
+    return ok({ ok: true });
+  }
+  if (route === 'POST /api/journal/photo/supprimer') {
+    if (meta && meta.id) { try { DriveApp.getFileById(meta.id).setTrashed(true); } catch (e) { /* deja supprime */ } }
+    setDoc(cle, 'null');
+    return ok({ ok: true });
+  }
+  return ko(404, 'introuvable');
 }
 function routesFichier(route, b, user, estProf) {
   const type = String(b.type || '');
@@ -509,7 +545,7 @@ function routesMission(route, b, user) {
 /* ---------- Routes (memes chemins que server.js) ---------- */
 function traiter(req) {
   const m = String(req.m || 'GET'), chemin = String(req.p || ''), b = req.b || {}, route = m + ' ' + chemin;
-  const ecriture = m !== 'GET' && ['POST /api/connexion', 'POST /api/protocole/envoyer', 'POST /api/convention/lire', 'POST /api/fichier/lire'].indexOf(route) < 0;
+  const ecriture = m !== 'GET' && ['POST /api/connexion', 'POST /api/protocole/envoyer', 'POST /api/convention/lire', 'POST /api/fichier/lire', 'POST /api/journal/photo/lire'].indexOf(route) < 0;
   let verrou = null;
   if (ecriture) { verrou = LockService.getScriptLock(); verrou.waitLock(20000); }
   try { return router(m, chemin, route, b, req.t); }
@@ -593,6 +629,7 @@ function router(m, chemin, route, b, jeton) {
   if (route === 'GET /api/moi') return ok(userInfo(user));
 
   if (chemin.indexOf('/api/fichier/') === 0) return routesFichier(route, b, user, estProf);
+  if (chemin.indexOf('/api/journal/') === 0) return routesJournal(route, b, user, estProf);
   if (chemin.indexOf('/api/mission') === 0) { if (!estProf) return ko(403, 'interdit'); return routesMission(route, b, user); }
   if (route === 'GET /api/francetravail/etat') {
     if (!estProf) return ko(403, 'interdit');

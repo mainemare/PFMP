@@ -10,7 +10,7 @@ const DATA = process.env.DATA_DIR || path.join(__dirname, 'donnees');
 const DOCS = path.join(DATA, 'docs');
 const USERS_FILE = path.join(DATA, 'comptes.json');
 const CONFIG_FILE = path.join(DATA, 'config.json');
-const SECTIONS = ['profil', 'cv', 'lettre', 'memento', 'demandes', 'journal', 'etat', 'prof'];
+const SECTIONS = ['profil', 'cv', 'lettre', 'memento', 'demandes', 'journal', 'etat', 'prof', 'bord'];
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.webmanifest': 'application/manifest+json; charset=utf-8' };
 const SESSION_MS = 12 * 3600 * 1000;
 
@@ -194,6 +194,7 @@ async function traiter(req, res) {
   if (chemin.startsWith('/api/convention') || route === 'POST /api/moi/chef') return erreur(req, res, 501, 'convention_indisponible');
   // CV et lettres en PDF : seulement avec la version Google (rangement dans le Drive).
   if (chemin.startsWith('/api/fichier/')) return erreur(req, res, 501, 'fichier_indisponible');
+  if (chemin.startsWith('/api/journal/')) return erreur(req, res, 501, 'photo_indisponible');
   if (chemin.startsWith('/api/mission')) return erreur(req, res, 501, 'mission_indisponible');
   if (chemin.startsWith('/api/francetravail/')) return erreur(req, res, 501, 'ft_indisponible');
   if (route === 'POST /api/deconnexion') return envoyer(req, res, 200, '{"ok":true}');

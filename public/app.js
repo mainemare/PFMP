@@ -49,7 +49,8 @@ const DEF = {
   demandes: () => ({ liste: [] }),
   journal: () => ({ evenements: [] }),
   etat: () => ({ conseilsLus: [] }),
-  prof: () => ({ conseils: [], propositions: [], niveauForce: null, dates: null, urgence: null, validations: {}, visites: [] }),
+  prof: () => ({ conseils: [], propositions: [], niveauForce: null, dates: null, urgence: null, validations: {}, visites: [], bord: {}, dispensePhoto: null }),
+  bord: () => ({ jours: {} }),
 };
 const normaliser = docs => { const o = {}; for (const k in DEF) o[k] = Object.assign(DEF[k](), (docs && docs[k]) || {}); return o; };
 const CHAMPS = {
@@ -223,7 +224,7 @@ function entete(prof) {
       : [['tableau', '📊 Tableau de bord'], ['alertes', '🔔 Alertes', nu], ['visites', '🗓️ Visites', ns], ['carte', '🗺️ Carte'], ['classes', '📅 Classes et dates'], ['entreprises', '🏢 Entreprises', np], ['offres', '📢 Offres de stage', no]];
   } else {
     const d = S.el, nl = d.prof.conseils.filter(c => !d.etat.conseilsLus.includes(c.id)).length;
-    nav = [['accueil', '🏠 Accueil', nl], ['profil', '👤 Mon profil'], ['entreprises', '🏢 Entreprises'], ['offres', '📢 Offres de stage', nbOffresEleve()], ['suivi', '📞 Mes appels', relancesDues(d).length],
+    nav = [['accueil', '🏠 Accueil', nl], ['profil', '👤 Mon profil'], ['entreprises', '🏢 Entreprises'], ['offres', '📢 Offres de stage', nbOffresEleve()], ['suivi', '📞 Mes appels', relancesDues(d).length], ['bord', '📓 Journal de bord', nbBordEnRetard(d)],
       ['memento', '📝 Memento'], ['cv', '📄 CV'], ['lettre', '✉️ Lettre'], ['protocole', '🤝 Protocole']];
   }
   return `<header class="top"><div class="logo">🎓 Suivi des stages${prof ? (S.user.role === 'ddfpt' ? ' · Console DDFPT' : ' · Console professeur') : ''}</div>
@@ -279,7 +280,8 @@ async function charger() {
   await chargerCommun();
   if (S.user.role !== 'eleve') { await chargerEleves(); S.vue = S.vue || (S.user.role === 'ddfpt' ? 'synthese' : 'tableau'); return; }
   const docs = {};
-  await Promise.all(Object.keys(DEF).map(async k => { docs[k] = await getDoc(`eleve/${S.user.id}/${k}`); }));
+  // Une section inconnue d'un ancien script Google ne doit pas empêcher la connexion.
+  await Promise.all(Object.keys(DEF).map(async k => { docs[k] = await getDoc(`eleve/${S.user.id}/${k}`).catch(() => null); }));
   S.el = normaliser(docs);
   await Promise.all([chargerEtab(), chargerConventions()]);
   S.vue = S.vue || (S.el.profil.residences.some(r => r.lat != null) ? 'accueil' : 'profil');
@@ -291,6 +293,7 @@ function vueEleve() {
     case 'profil': return vueProfil();
     case 'entreprises': return vueEntreprises();
     case 'offres': return vueOffresEleve();
+    case 'bord': return vueJournalBord();
     case 'suivi': return vueSuivi();
     case 'memento': case 'cv': case 'lettre': return vueDoc(S.vue);
     case 'protocole': return vueProtocole();
@@ -335,7 +338,7 @@ function vueAccueil() {
   const nonLus = d.prof.conseils.filter(c => !d.etat.conseilsLus.includes(c.id)), rel = relancesDues(d);
   const todo = [[d.profil.residences.some(r => r.lat != null), 'Compléter mon profil et mes communes de résidence', 'profil'], [!!d.memento.accroche.trim(), 'Préparer mon memento d’appel', 'memento'],
     [!!d.cv.deposeLe, 'Déposer mon CV', 'cv'], [!!d.lettre.deposeLe, 'Déposer ma lettre de motivation', 'lettre'], [d.demandes.liste.length > 0, 'Sélectionner des entreprises à appeler', 'entreprises']];
-  return `<div class="alerte ${al.c}" role="alert">${al.h}</div>${blocVisiteEleve(d)}
+  return `<div class="alerte ${al.c}" role="alert">${al.h}</div>${blocVisiteEleve(d)}${blocRappelBord(d)}
   <section class="carte"><h2>Où j’en suis</h2>${barre(n, false, d)}${progressionRecherche(d) ? `<p style="margin:10px 0 0">${progressionRecherche(d)}</p>` : ''}
     <div class="etapes">${NIV.map((v, i) => `<div class="${i <= n ? 'fait' : ''}" style="${i <= n ? `background:${NIV[n].c}` : ''}"><b>${i}</b>${v.l}</div>`).join('')}</div>
     <p class="doux petit" style="margin-top:10px">Le niveau avance tout seul : 1 dès qu’une entreprise est sélectionnée, 2 (recherche active) à partir de ${SEUIL_ACTIVE} entreprises contactées — très active à partir de ${SEUIL_TRES_ACTIVE} —, puis selon le statut de tes demandes (rendez-vous, protocole, convention).</p></section>
