@@ -1,5 +1,7 @@
 # Publie le dossier "public" sur GitHub Pages a chaque mise a jour de la branche main.
 # A activer une fois : depot GitHub > Settings > Pages > Source : "GitHub Actions".
+# Deux etapes separees (comme le modele officiel de GitHub) : preparation des pages, puis mise en ligne.
+# Dans une seule etape, la mise en ligne ne trouvait parfois pas encore les pages preparees.
 name: Publier sur GitHub Pages
 
 on:
@@ -15,19 +17,24 @@ permissions:
 
 concurrency:
   group: pages
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
-  publier:
+  preparer:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.publication.outputs.page_url }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/configure-pages@v6
       - uses: actions/upload-pages-artifact@v5
         with:
           path: public
+
+  publier:
+    needs: preparer
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.publication.outputs.page_url }}
+    steps:
       - id: publication
         uses: actions/deploy-pages@v5
