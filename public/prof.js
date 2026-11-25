@@ -94,8 +94,10 @@ function vueDossier() {
   const onglets = [['synthese', 'Synthèse'], ['suivi', `Demandes (${d.demandes.liste.length})`], ['cv', 'CV'], ['lettre', 'Lettre'], ['memento', 'Memento'], ['conseils', 'Conseils et entreprises'], ['activite', 'Activité']];
   // Journal de bord : pour les professeurs seulement (inutile pour le DDFPT).
   if (S.user.role !== 'ddfpt') { const nb = nbBordALire(d); onglets.splice(4, 0, ['bord', `Journal de bord${nb ? ` (${nb})` : ''}`]); }
+  { const pf = d.prof.portfolio, aValider = d.portfolio && (d.portfolio.raison || d.portfolio.cdc) && (!pf || !pf.valide || String(d.portfolio.majLe) > String(pf.date));
+    onglets.splice(onglets.findIndex(o => o[0] === 'memento'), 0, ['portfolio', `Portfolio${pf && pf.valide ? ` (${String(pf.total).replace('.', ',')}/20)` : aValider ? ' 🟣' : ''}`]); }
   if (S.onglet === 'bord' && S.user.role === 'ddfpt') S.onglet = 'synthese';
-  const corps = { synthese: dosSynthese, suivi: dosSuivi, cv: () => dosDoc(e, 'cv'), lettre: () => dosDoc(e, 'lettre'), memento: () => dosDoc(e, 'memento'), conseils: dosConseils, activite: dosActivite, bord: dosBord }[S.onglet](e);
+  const corps = { synthese: dosSynthese, suivi: dosSuivi, cv: () => dosDoc(e, 'cv'), lettre: () => dosDoc(e, 'lettre'), memento: () => dosDoc(e, 'memento'), conseils: dosConseils, activite: dosActivite, bord: dosBord, portfolio: dosPortfolio }[S.onglet](e);
   return `<div class="overlay" data-a="fond" data-dossier="1"><div class="fenetre large" role="dialog" aria-modal="true"><button class="fermer" data-a="fermerDossier" aria-label="Fermer">✕</button>
     <div class="dossier-tete" style="--c:${NIV[n].c}"><h2>${esc(nomEleve(e))} <span class="badge" style="background:${esc(cl ? cl.couleur : '#64748b')}">${esc(cl ? cl.nom : 'Sans classe')}</span>
       ${enUrgence(d) ? '<span class="badge urg">🚨 PLAN D’URGENCE</span>' : ''}</h2>${barre(n, false, d)}

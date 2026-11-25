@@ -238,3 +238,22 @@ Limites
   - Dispense de photo : en haut de l'onglet, avec le motif (lieu de stage interdisant les photos). La photo devient facultative.
   - Le DDFPT n'a pas cet onglet.
   Mise en place : mettez a jour Code.gs puis Deployer > Gerer les deploiements > (crayon) > Nouvelle version.
+
+16. PORTFOLIO : COMPTE RENDU D'ACTIVITE NOTE SUR 20
+  - Eleve : rubrique « Portfolio ». Une activite representative du stage, en 6 parties decoupees en sous-parties :
+    1. Entreprise (raison sociale, code NAF, tuteur et sa fonction, activites) /2
+    2. Definition de l'activite (adresse, type de chantier, duree, cahier des charges, organisation, materiel, outils,
+       documents utilises) /8
+    3. Analyse des risques (conditions de travail, risques decrits avec prevention, types de risques) /3
+    4. Bilan (difficultes, autonomie, niveau de reussite) /3
+    5. Ce que j'ai appris (exigences, materiel, organisation d'entreprise, metier) /2 (4 x 0,5)
+    6. Annexes (jusqu'a 6 images legendees) /2
+  - Sous chaque partie, la grille d'evaluation avec les points obtenus et ce qu'il faut ajouter. Aides comme pour la lettre :
+    exemples a personnaliser, listes de materiel, d'outils et de risques a ajouter d'un clic, mots de liaison, verification de
+    l'orthographe. Pre-rempli avec l'entreprise de la convention et le dernier chantier du journal de bord.
+  - Note automatique : presence et precision des informations (code NAF au bon format, adresse avec code postal, duree chiffree,
+    nombre de mots, nombre d'elements, types de risques differents, legendes des annexes).
+  - Professeur : dossier de l'eleve > onglet « Portfolio ». Points automatiques modifiables critere par critere (au quart de
+    point), commentaire par partie, appreciation generale, « Valider l'evaluation » : l'eleve voit alors la note du professeur.
+    PDF : compte rendu sur une page, annexes, grille d'evaluation avec les notes.
+  Mise en place : mettez a jour Code.gs puis Deployer > Gerer les deploiements > (crayon) > Nouvelle version.

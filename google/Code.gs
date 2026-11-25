@@ -8,7 +8,7 @@
  */
 const FEUILLE = 'donnees';
 const MORCEAU = 40000;                       // une cellule Google Sheets contient au plus 50 000 caracteres
-const SECTIONS = ['profil', 'cv', 'lettre', 'memento', 'demandes', 'journal', 'etat', 'prof', 'bord'];
+const SECTIONS = ['profil', 'cv', 'lettre', 'memento', 'demandes', 'journal', 'etat', 'prof', 'bord', 'portfolio'];
 const SESSION_MS = 12 * 3600 * 1000;
 const ITERATIONS = 300;
 
@@ -180,7 +180,7 @@ function supprimerFichiersDe(eleveId) {
   });
   // Photos du journal de bord
   table().m.forEach((x, cle) => {
-    if (cle.indexOf('eleve/' + eleveId + '/photo-') !== 0 || !x.texte || x.texte === 'null') return;
+    if ((cle.indexOf('eleve/' + eleveId + '/photo-') !== 0 && cle.indexOf('eleve/' + eleveId + '/annexe-') !== 0) || !x.texte || x.texte === 'null') return;
     const m = JSON.parse(x.texte); if (m && m.id) { try { DriveApp.getFileById(m.id).setTrashed(true); } catch (e) { /* deja supprime */ } }
   });
 }
@@ -188,12 +188,14 @@ function supprimerFichiersDe(eleveId) {
 /* ---------- Journal de bord : une photo par jour de stage, dans le meme dossier prive du Drive ----------
  * Le texte est dans la section « bord » du dossier de l'eleve ; la photo est rangee dans le Drive et son identifiant
  * garde sous eleve/<id>/photo-AAAA-MM-JJ (cle inaccessible par /api/doc). */
+// Memes routes pour les annexes du portfolio (b.annexe = 1 a 6 au lieu de b.date) : cle eleve/<id>/annexe-N.
 function routesJournal(route, b, user, estProf) {
-  const date = String(b.date || '');
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return ko(400, 'invalide');
+  const date = String(b.date || ''), annexe = b.annexe != null ? String(b.annexe) : null;
+  if (annexe !== null ? !/^[1-6]$/.test(annexe) : !/^\d{4}-\d{2}-\d{2}$/.test(date)) return ko(400, 'invalide');
   const eleveId = user.role === 'eleve' ? user.id : String(b.eleveId || '');
   if (!/^[a-f0-9]{12}$/.test(eleveId) || (!estProf && eleveId !== user.id)) return ko(403, 'interdit');
-  const cle = 'eleve/' + eleveId + '/photo-' + date, meta = JSON.parse(getDoc(cle));
+  const suffixe = annexe !== null ? 'annexe-' + annexe : 'photo-' + date;
+  const cle = 'eleve/' + eleveId + '/' + suffixe, meta = JSON.parse(getDoc(cle));
   if (route === 'POST /api/journal/photo/lire') {
     if (!meta || !meta.id) return ko(404, 'introuvable');
     const blob = DriveApp.getFileById(meta.id).getBlob();
@@ -204,7 +206,7 @@ function routesJournal(route, b, user, estProf) {
     const m = /^data:(image\/(?:jpeg|png));base64,([A-Za-z0-9+/=]+)$/.exec(String(b.img || ''));
     if (!m || m[2].length > 2000000) return ko(400, 'photo_invalide');
     if (meta && meta.id) { try { DriveApp.getFileById(meta.id).setTrashed(true); } catch (e) { /* deja supprime */ } }
-    const f = dossierFichiers().createFile(Utilities.newBlob(Utilities.base64Decode(m[2]), m[1], eleveId + '-journal-' + date + (m[1] === 'image/png' ? '.png' : '.jpg')));
+    const f = dossierFichiers().createFile(Utilities.newBlob(Utilities.base64Decode(m[2]), m[1], eleveId + '-' + suffixe + (m[1] === 'image/png' ? '.png' : '.jpg')));
     setDoc(cle, JSON.stringify({ id: f.getId(), type: m[1], date: new Date().toISOString() }));
     return ok({ ok: true });
   }

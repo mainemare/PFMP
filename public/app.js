@@ -49,8 +49,9 @@ const DEF = {
   demandes: () => ({ liste: [] }),
   journal: () => ({ evenements: [] }),
   etat: () => ({ conseilsLus: [] }),
-  prof: () => ({ conseils: [], propositions: [], niveauForce: null, dates: null, urgence: null, validations: {}, visites: [], bord: {}, dispensePhoto: null }),
+  prof: () => ({ conseils: [], propositions: [], niveauForce: null, dates: null, urgence: null, validations: {}, visites: [], bord: {}, dispensePhoto: null, portfolio: null }),
   bord: () => ({ jours: {} }),
+  portfolio: () => ({}),
 };
 const normaliser = docs => { const o = {}; for (const k in DEF) o[k] = Object.assign(DEF[k](), (docs && docs[k]) || {}); return o; };
 const CHAMPS = {
@@ -224,7 +225,7 @@ function entete(prof) {
       : [['tableau', '📊 Tableau de bord'], ['alertes', '🔔 Alertes', nu], ['visites', '🗓️ Visites', ns], ['carte', '🗺️ Carte'], ['classes', '📅 Classes et dates'], ['entreprises', '🏢 Entreprises', np], ['offres', '📢 Offres de stage', no]];
   } else {
     const d = S.el, nl = d.prof.conseils.filter(c => !d.etat.conseilsLus.includes(c.id)).length;
-    nav = [['accueil', '🏠 Accueil', nl], ['profil', '👤 Mon profil'], ['entreprises', '🏢 Entreprises'], ['offres', '📢 Offres de stage', nbOffresEleve()], ['suivi', '📞 Mes appels', relancesDues(d).length], ['bord', '📓 Journal de bord', nbBordEnRetard(d)],
+    nav = [['accueil', '🏠 Accueil', nl], ['profil', '👤 Mon profil'], ['entreprises', '🏢 Entreprises'], ['offres', '📢 Offres de stage', nbOffresEleve()], ['suivi', '📞 Mes appels', relancesDues(d).length], ['bord', '📓 Journal de bord', nbBordEnRetard(d)], ['portfolio', '🗂️ Portfolio'],
       ['memento', '📝 Memento'], ['cv', '📄 CV'], ['lettre', '✉️ Lettre'], ['protocole', '🤝 Protocole']];
   }
   return `<header class="top"><div class="logo">🎓 Suivi des stages${prof ? (S.user.role === 'ddfpt' ? ' · Console DDFPT' : ' · Console professeur') : ''}</div>
@@ -294,6 +295,7 @@ function vueEleve() {
     case 'entreprises': return vueEntreprises();
     case 'offres': return vueOffresEleve();
     case 'bord': return vueJournalBord();
+    case 'portfolio': return vuePortfolio();
     case 'suivi': return vueSuivi();
     case 'memento': case 'cv': case 'lettre': return vueDoc(S.vue);
     case 'protocole': return vueProtocole();
