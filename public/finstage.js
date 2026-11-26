@@ -4,7 +4,7 @@
  * par l'entreprise, puis dépôt de l'attestation signée : photo ou PDF, rangée dans le dossier privé du Drive). */
 const PHASES = [
   { id: 'avant', n: 1, titre: 'Avant le stage', sous: 'Trouver mon stage', ic: '🔎', c: '#2563eb',
-    vues: [['profil', '👤 Mon profil'], ['entreprises', '🏢 Entreprises'], ['offres', '📢 Offres de stage'], ['suivi', '📞 Mes appels'], ['memento', '📝 Memento'], ['cv', '📄 CV'], ['lettre', '✉️ Lettre'], ['protocole', '🤝 Protocole']] },
+    vues: [['cv', '📄 CV'], ['lettre', '✉️ Lettre'], ['profil', '👤 Mon profil'], ['memento', '📝 Memento'], ['entreprises', '🏢 Entreprises'], ['offres', '📢 Offres de stage'], ['suivi', '📞 Mes appels'], ['protocole', '🤝 Protocole']] },
   { id: 'pendant', n: 2, titre: 'Pendant le stage', sous: 'Garder une trace', ic: '🛠️', c: '#0d9488',
     vues: [['bord', '📓 Journal de bord'], ['portfolio', '🗂️ Portfolio']] },
   { id: 'fin', n: 3, titre: 'Fin du stage', sous: 'Évaluation et attestation', ic: '🏁', c: '#7c3aed',
@@ -27,6 +27,46 @@ function navEleve(d, pastilles) {
     <span class="nav-etape">${p.n} · ${p.titre}</span>${p.vues.map(bouton).join('')}</div>`).join('');
 }
 
+/* ---------- Avancement de chaque rubrique (barres de progression) ---------- */
+function avDepot(doc, quoi) {
+  if (!doc) return [0, 'à déposer'];
+  if (doc.valide) return [100, 'validé par ton professeur'];
+  if (doc.fichierLe) return nbAnnotations(doc) && !doc.aRelire ? [70, 'annoté : corrige et redépose'] : [60, 'déposé, en attente de relecture'];
+  return doc.deposeLe ? [30, 'à déposer en PDF ici'] : [0, quoi];
+}
+const AVANCEMENT = {
+  cv: d => avDepot(d.cv, 'à rédiger puis déposer'),
+  lettre: d => avDepot(d.lettre, 'à rédiger puis déposer'),
+  profil: d => { const n = d.profil.residences.filter(r => r.lat != null).length;
+    return [Math.min(100, 34 + 33 * n), n ? `${n} commune(s) de résidence${n < 2 ? ' : ajoutes-en une 2e' : ''}` : 'indique tes communes de résidence']; },
+  memento: d => { const m = d.memento; if (m.valide) return [100, 'validé par ton professeur'];
+    const n = CHAMPS.memento.filter(([k]) => String(m[k] || '').trim()).length; return [Math.round(n / CHAMPS.memento.length * 90), `${n}/${CHAMPS.memento.length} parties remplies`]; },
+  entreprises: d => { const n = d.demandes.liste.length; return [Math.min(100, Math.round(n / SEUIL_ACTIVE * 100)), `${n} entreprise(s) sélectionnée(s) · objectif ${SEUIL_ACTIVE}`]; },
+  suivi: d => { if (niveau(d) >= 3) return [100, NIV[niveau(d)].l]; const n = nbContactees(d);
+    return [Math.min(95, Math.round(n / SEUIL_TRES_ACTIVE * 100)), `${n} entreprise(s) contactée(s) · objectif ${SEUIL_TRES_ACTIVE}`]; },
+  protocole: d => { const n = niveau(d), l = d.demandes.liste;
+    if (n >= 4) return [100, n >= 5 ? 'convention signée' : 'protocole signé'];
+    if (l.some(x => x.protocole && x.protocole.soumisLe)) return [75, 'envoyé au professeur référent'];
+    if (l.some(x => x.protocole)) return [40, 'commencé'];
+    return n === 3 ? [15, 'rendez-vous obtenu : prépare-le'] : [0, 'après un rendez-vous']; },
+  bord: d => { const b = bilanBord(d); return b.passes ? [Math.round(b.complets / b.passes * 100), `${b.complets}/${b.passes} jour(s) remplis`] : [0, 'dès le 1er jour du stage']; },
+  portfolio: d => { const ev = d.prof.portfolio; if (ev && ev.valide) return [100, `noté ${fmtNote(ev.total)}/20`];
+    const p = d.portfolio || {}; if (!Object.keys(p).length) return [0, 'à rédiger'];
+    const s = totalPf(noteAutoPf(p)); return [Math.min(95, Math.round(s / 20 * 100)), `note indicative ${fmtNote(s)}/20`]; },
+  fin: d => { const a = d.attestation || {}; return a.valide ? [100, 'attestation validée'] : a.fichierLe ? [70, 'attestation déposée'] : [0, 'attestation à faire signer']; },
+};
+const coulAv = p => p >= 100 ? '#16a34a' : p >= 60 ? '#0d9488' : p >= 30 ? '#ca8a04' : p > 0 ? '#ea580c' : '#cbd5e1';
+function barresPhase(d, p, ici) {
+  const lignes = p.vues.filter(([v]) => AVANCEMENT[v]).map(([v, l]) => [v, l, ...AVANCEMENT[v](d)]);
+  const moy = lignes.length ? Math.round(lignes.reduce((s, x) => s + x[2], 0) / lignes.length) : 0;
+  return { moy, html: `<div class="barres">${p.vues.map(([v, l]) => { const a = AVANCEMENT[v];
+    if (!a) return `<button class="barre-ligne sans" data-a="aller" data-v="${v}"><span class="barre-nom">${l}</span><span class="petit doux">à consulter</span></button>`;
+    const [pc, txt] = a(d);
+    return `<button class="barre-ligne" data-a="aller" data-v="${v}" title="${esc(txt)}"><span class="barre-nom">${l}</span>
+      <span class="barre-fond" role="progressbar" aria-valuenow="${pc}" aria-valuemin="0" aria-valuemax="100" aria-label="${esc(l.replace(/^\S+\s/, ''))}"><span style="width:${pc}%;background:${coulAv(pc)}"></span></span>
+      <b class="barre-pc">${pc} %</b><span class="barre-txt petit doux">${esc(txt)}</span></button>`; }).join('')}</div>` };
+}
+
 /* ---------- Accueil : « Mon parcours » ---------- */
 function etatAttestation(d) {
   const a = d.attestation || {};
@@ -37,17 +77,17 @@ function bilanBord(d) {
   return { total: joursBord(d).length, passes: jours.length, complets };
 }
 function blocParcours(d) {
-  const ici = phaseEleve(d), n = niveau(d), b = bilanBord(d), ev = d.prof.portfolio, att = etatAttestation(d);
+  const ici = phaseEleve(d), n = niveau(d);
   const etat = {
     avant: n >= 5 ? '✅ Convention signée' : `Niveau ${n} : ${NIV[n].l}`,
-    pendant: b.total ? `📓 ${b.complets}/${b.passes || 0} jour(s) remplis · 🗂️ ${ev && ev.valide ? `portfolio noté ${fmtNote(ev.total)}/20` : d.portfolio && Object.keys(d.portfolio).length ? 'portfolio commencé' : 'portfolio à rédiger'}` : 'Commence le premier jour du stage',
-    fin: `${att[0]} ${att[1]}`,
+    pendant: 'Avancement',
+    fin: 'Avancement',
   };
   return `<section class="carte parcours"><h2>Mon parcours de stage</h2><div class="parcours-etapes">${PHASES.map(p => `
     <div class="parcours-etape ${p.id === ici ? 'ici' : ''}" style="--ph:${p.c}">
       <div class="parcours-tete"><span class="parcours-num">${p.n}</span><div><b>${p.ic} ${p.titre}</b><div class="petit">${p.sous}</div></div>${p.id === ici ? '<span class="parcours-ici">📍 Tu es ici</span>' : ''}</div>
-      <p class="petit parcours-etat">${etat[p.id]}</p>
-      <div class="parcours-liens">${p.vues.map(([v, l]) => `<button class="btn mini ${p.id === ici ? '' : 'sec'}" data-a="aller" data-v="${v}">${l}</button>`).join('')}</div>
+      <p class="petit parcours-etat">${etat[p.id]} · <b>${barresPhase(d, p).moy} %</b></p>
+      ${barresPhase(d, p).html}
     </div>`).join('')}</div></section>`;
 }
 

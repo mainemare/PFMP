@@ -386,3 +386,15 @@ header.top nav.nav-eleve ~ .qui { margin-left: auto; }
 .etapes-att li { margin-bottom: 12px; }
 .etapes-att label { margin-top: 6px; }
 .note-finale { font-size: 1.1rem; }
+
+/* Barres d'avancement par rubrique */
+.barres { display: grid; gap: 4px; }
+.barre-ligne { display: grid; grid-template-columns: 9.5em 1fr 3.2em; grid-template-areas: "nom fond pc" "nom txt txt"; align-items: center; column-gap: 8px; width: 100%; text-align: left; background: transparent; border: 0; border-radius: 8px; padding: 5px 6px; font: inherit; color: inherit; cursor: pointer; }
+.barre-ligne:hover { background: color-mix(in srgb, var(--ph) 9%, transparent); }
+.barre-ligne.sans { grid-template-areas: "nom txt txt"; }
+.barre-nom { grid-area: nom; font-size: .86rem; font-weight: 600; }
+.barre-fond { grid-area: fond; height: 10px; border-radius: 999px; background: #e5e7eb; overflow: hidden; }
+.barre-fond > span { display: block; height: 100%; border-radius: 999px; min-width: 4px; transition: width .4s; }
+.barre-pc { grid-area: pc; font-size: .8rem; text-align: right; }
+.barre-txt { grid-area: txt; line-height: 1.25; }
+.barre-ligne.sans .barre-txt, .barre-ligne.sans > .petit { grid-area: txt; }
