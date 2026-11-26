@@ -195,6 +195,7 @@ async function traiter(req, res) {
   // CV et lettres en PDF : seulement avec la version Google (rangement dans le Drive).
   if (chemin.startsWith('/api/fichier/')) return erreur(req, res, 501, 'fichier_indisponible');
   if (chemin.startsWith('/api/journal/')) return erreur(req, res, 501, 'photo_indisponible');
+  if (chemin.startsWith('/api/protosig/')) return erreur(req, res, 501, 'protosig_indisponible');
   if (chemin.startsWith('/api/mission')) return erreur(req, res, 501, 'mission_indisponible');
   if (chemin.startsWith('/api/francetravail/')) return erreur(req, res, 501, 'ft_indisponible');
   if (route === 'POST /api/deconnexion') return envoyer(req, res, 200, '{"ok":true}');

@@ -512,6 +512,60 @@ function importQuotidienFranceTravail() {
   finally { SpreadsheetApp.flush(); verrou.releaseLock(); }
 }
 
+/* ---------- Signature du protocole d'accord par le tuteur, a distance (lien ephemere envoye par SMS) ----------
+ * L'eleve chiffre le PDF du protocole dans son navigateur ; la cle n'est que dans le lien (apres « # »).
+ * Le fichier chiffre est range dans le dossier des conventions et supprime a l'expiration ou quand l'eleve
+ * a recupere la signature. Le tuteur n'a pas besoin de compte. */
+const PROTOSIG_ROUTES_PUBLIQUES = ['POST /api/protosig/lire', 'POST /api/protosig/signer'];
+function purgerProtosig() {
+  const maintenant = Date.now(), aSupprimer = [];
+  table().m.forEach((x, cle) => {
+    if (cle.indexOf('protosig/') !== 0 || !x.texte || x.texte === 'null') return;
+    const m = JSON.parse(x.texte);
+    if (m.expire < maintenant) { try { DriveApp.getFileById(m.fichier).setTrashed(true); } catch (e) { /* deja supprime */ } aSupprimer.push(cle); }
+  });
+  aSupprimer.forEach(cle => supprimerDocs(cle));
+}
+function routesProtosig(route, b, user) {
+  const id = String(b.id || ''), cle = 'protosig/' + id;
+  if (route === 'POST /api/protosig/creer') {
+    if (!user || user.role !== 'eleve') return ko(403, 'interdit');
+    const chiffre = String(b.chiffre || ''), heures = [24, 48, 72].indexOf(+b.heures) >= 0 ? +b.heures : 48;
+    if (!chiffre || chiffre.length > 3500000) return ko(413, 'trop_gros');
+    purgerProtosig();
+    const nouvel = hasard(16), fichier = ecrireFichierConv(null, 'protocole-signature-' + nouvel + '.json', { chiffre: chiffre, sig: null });
+    const m = { eleveId: user.id, cree: Date.now(), expire: Date.now() + heures * 3600 * 1000, fichier: fichier, signe: null };
+    setDoc('protosig/' + nouvel, JSON.stringify(m));
+    return ok({ id: nouvel, expire: new Date(m.expire).toISOString() });
+  }
+  const m = /^[a-f0-9]{16}$/.test(id) ? JSON.parse(getDoc(cle)) : null;
+  if (!m || m.expire < Date.now()) return ko(410, 'lien_expire');
+  if (route === 'POST /api/protosig/lire') {
+    if (m.signe) return ko(409, 'deja_signe');
+    return ok({ chiffre: lireFichierConv(m.fichier).chiffre, expire: new Date(m.expire).toISOString() });
+  }
+  if (route === 'POST /api/protosig/signer') {
+    if (m.signe) return ko(409, 'deja_signe');
+    if (trop('protosig|' + id, 10)) return ko(429, 'trop_essais');
+    compter('protosig|' + id);
+    const sig = String(b.sig || '');
+    if (!sig || sig.length > 1500000) return ko(413, 'trop_gros');
+    const f = lireFichierConv(m.fichier); f.sig = sig; f.chiffre = null; ecrireFichierConv(m.fichier, null, f);   // le protocole n'est plus utile
+    m.signe = new Date().toISOString(); setDoc(cle, JSON.stringify(m));
+    return ok({ ok: true });
+  }
+  if (!user || user.role !== 'eleve' || user.id !== m.eleveId) return ko(403, 'interdit');
+  if (route === 'POST /api/protosig/etat') {
+    return ok({ signe: m.signe, expire: new Date(m.expire).toISOString(), sig: m.signe ? lireFichierConv(m.fichier).sig : null });
+  }
+  if (route === 'POST /api/protosig/supprimer') {
+    try { DriveApp.getFileById(m.fichier).setTrashed(true); } catch (e) { /* deja supprime */ }
+    supprimerDocs(cle);
+    return ok({ ok: true });
+  }
+  return ko(404, 'introuvable');
+}
+
 function routesMission(route, b, user) {
   const chef = !!user.chef, id = String(b.id || '');
   if (route === 'GET /api/missions') return ok(missions().filter(m => m.profId === user.id || chef).sort((a, c) => String(c.creeLe).localeCompare(String(a.creeLe))));
@@ -547,7 +601,7 @@ function routesMission(route, b, user) {
 /* ---------- Routes (memes chemins que server.js) ---------- */
 function traiter(req) {
   const m = String(req.m || 'GET'), chemin = String(req.p || ''), b = req.b || {}, route = m + ' ' + chemin;
-  const ecriture = m !== 'GET' && ['POST /api/connexion', 'POST /api/protocole/envoyer', 'POST /api/convention/lire', 'POST /api/fichier/lire', 'POST /api/journal/photo/lire'].indexOf(route) < 0;
+  const ecriture = m !== 'GET' && ['POST /api/connexion', 'POST /api/protocole/envoyer', 'POST /api/convention/lire', 'POST /api/fichier/lire', 'POST /api/journal/photo/lire', 'POST /api/protosig/etat', 'POST /api/protosig/lire'].indexOf(route) < 0;
   let verrou = null;
   if (ecriture) { verrou = LockService.getScriptLock(); verrou.waitLock(20000); }
   try { return router(m, chemin, route, b, req.t); }
@@ -618,6 +672,8 @@ function router(m, chemin, route, b, jeton) {
   }
 
   // Conventions : certaines routes sont ouvertes aux signataires externes (lien + code, sans compte).
+  // Signature du protocole par le tuteur : routes ouvertes par le lien (sans compte), les autres reservees a l'eleve.
+  if (chemin.indexOf('/api/protosig/') === 0) return routesProtosig(route, b, jeton ? lireJeton(jeton) : null);
   if (chemin.indexOf('/api/convention') === 0 || route === 'POST /api/moi/chef') {
     const r = routesConvention(route, b, jeton ? lireJeton(jeton) : null, jeton);
     if (r) return r;

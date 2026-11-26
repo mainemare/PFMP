@@ -167,12 +167,17 @@ async function fabriquerPdf() {
   }
   // Signature et cachet de l'entreprise, sous « Signature et cachet de l'entreprise : » (colonne de gauche).
   const images = [PROTO.sigEnt && PROTO.sigEnt.img, PROTO.sigEnt && PROTO.sigEnt.cachet].filter(Boolean);
-  const zone = { x: 42, y: 160, w: 226, h: 62 };
+  // Avec une signature à distance, on garde une ligne en bas de la case pour « Signé électroniquement par… ».
+  const signeDistance = !!(PROTO.sigEnt && PROTO.sigEnt.signataire);
+  const zone = signeDistance ? { x: 42, y: 169, w: 226, h: 53 } : { x: 42, y: 160, w: 226, h: 62 };
   for (let k = 0; k < images.length; k++) {
     const url = images[k], octets = Uint8Array.from(atob(url.slice(url.indexOf(',') + 1)), c => c.charCodeAt(0));
     const img = url.startsWith('data:image/png') ? await doc.embedPng(octets) : await doc.embedJpg(octets);
     const bw = images.length > 1 ? zone.w / 2 - 4 : zone.w, sc = Math.min(bw / img.width, zone.h / img.height);
     page.drawImage(img, { x: zone.x + k * (zone.w / 2 + 4) + (bw - img.width * sc) / 2, y: zone.y + (zone.h - img.height * sc) / 2, width: img.width * sc, height: img.height * sc });
+  }
+  if (PROTO.sigEnt && PROTO.sigEnt.signataire) {
+    try { page.drawText(`Signé électroniquement par ${PROTO.sigEnt.signataire} le ${fmt(PROTO.sigEnt.signeLe)}`.replace(/[^\u0020-\u00FF’]/g, ''), { x: zone.x, y: 161, size: 6.5, font: police, color: encre }); } catch { /* caractère non imprimable */ }
   }
   doc.setTitle(`Protocole d'accord - ${PROTO.eleve.prenom} ${PROTO.eleve.nom}`.trim()); doc.setCreator('Suivi des stages');
   return doc.save();
@@ -310,8 +315,10 @@ function blocSignatureEntreprise() {
   return `<h3 style="margin-top:16px">✍️ Signature et cachet de l’entreprise</h3>
     <p class="doux petit">À faire avec la personne de l’entreprise avant l’envoi au professeur : elle signe directement sur l’écran, ou tu prends en photo sa signature et le tampon de l’entreprise. Ils apparaîtront sur le PDF dans la case « Signature et cachet de l’entreprise ».</p>
     <div class="onglets"><button type="button" class="${s.mode !== 'photo' ? 'actif' : ''}" data-a="protoSigMode" data-m="pad">✍️ Signer sur l’écran</button>
-      <button type="button" class="${s.mode === 'photo' ? 'actif' : ''}" data-a="protoSigMode" data-m="photo">📷 Photo de la signature</button></div>
-    ${s.img ? `<img class="apercu-img" src="${s.img}" alt="Signature de l’entreprise"><button type="button" class="btn mini sec" data-a="protoSigRefaire">Refaire la signature</button>`
+      <button type="button" class="${s.mode === 'photo' ? 'actif' : ''}" data-a="protoSigMode" data-m="photo">📷 Photo de la signature</button>
+      <button type="button" class="${s.mode === 'lien' ? 'actif' : ''}" data-a="protoSigMode" data-m="lien">📱 Envoyer un lien au tuteur</button></div>
+    ${s.img ? `<img class="apercu-img" src="${s.img}" alt="Signature de l’entreprise">${s.signataire ? `<p class="petit">✅ Signé à distance par <b>${esc(s.signataire)}</b> le ${fmtDT(s.signeLe)}</p>` : ''}<button type="button" class="btn mini sec" data-a="protoSigRefaire">Refaire la signature</button>`
+      : s.mode === 'lien' ? blocLienTuteur()
       : s.mode === 'photo' ? '<input type="file" accept="image/*" capture="environment" data-c="protoSigPhoto" aria-label="Photo de la signature">'
       : '<canvas id="protoPad" class="pad-signature" aria-label="Signature de l’entreprise"></canvas><div class="actions"><button type="button" class="btn mini" data-a="protoSigValider">Valider la signature</button><button type="button" class="btn mini sec" data-a="protoSigEffacer">Effacer</button></div>'}
     <h4 class="petit" style="margin:14px 0 4px">Tampon (cachet) de l’entreprise <span class="doux">(photo, facultatif)</span></h4>
@@ -328,7 +335,65 @@ A.protoSigValider = () => {
   if (!padProtocole || padProtocole.vide()) throw new Error('La personne de l’entreprise doit d’abord signer dans le cadre.');
   PROTO.sigEnt.img = padProtocole.image(); majProto(); toast('Signature ajoutée au protocole');
 };
-A.protoSigRefaire = () => { PROTO.sigEnt.img = ''; majProto(); };
+A.protoSigRefaire = () => { PROTO.sigEnt.img = ''; PROTO.sigEnt.signataire = ''; majProto(); };
 A.protoCachetRetirer = () => { PROTO.sigEnt.cachet = ''; majProto(); };
 C.protoSigPhoto = async el => { PROTO.sigEnt.img = await CONV.photoEnImage(el.files[0]); majProto(); toast('Photo de la signature ajoutée'); };
 C.protoCachetPhoto = async el => { PROTO.sigEnt.cachet = await CONV.photoEnImage(el.files[0]); majProto(); toast('Cachet ajouté'); };
+
+/* ---------- Signature à distance : lien éphémère envoyé par SMS au tuteur ----------
+ * Le PDF (sans signature) est chiffré sur l'appareil de l'élève ; la clé n'est que dans le lien.
+ * Le lien et sa clé sont gardés sur cet appareil le temps de récupérer la signature. */
+const cleLienTuteur = () => 'protosig_' + (PROTO.demandeId || 'libre');
+function lienTuteurMemorise() { try { const x = JSON.parse(localStorage.getItem(cleLienTuteur()) || 'null'); return x && new Date(x.expire) > new Date() ? x : null; } catch { return null; } }
+function memoriserLienTuteur(x) { try { if (x) localStorage.setItem(cleLienTuteur(), JSON.stringify(x)); else localStorage.removeItem(cleLienTuteur()); } catch { /* stockage indisponible */ } }
+const urlLienTuteur = x => location.href.replace(/[#?].*$/, '').replace(/[^/]*$/, '') + 'signature-tuteur.html#p=' + x.id + '&k=' + x.cle;
+const texteSms = x => `Bonjour, voici le protocole d’accord de stage de ${PROTO.eleve.prenom || S.el.profil.prenom} (lycée Raymond Queneau, Yvetot) à lire et à signer : ${urlLienTuteur(x)} (lien valable jusqu’au ${fmtDT(x.expire)}). Merci !`;
+function blocLienTuteur() {
+  const x = lienTuteurMemorise();
+  if (!x) return `<div class="lien-tuteur"><p class="petit">Ton tuteur n’est pas à côté de toi ? Envoie-lui un lien par SMS : il lit le protocole sur son téléphone, signe avec le doigt ou prend son tampon en photo. La signature arrive ensuite ici.</p>
+    <div class="deux"><label>Téléphone portable du tuteur <span class="doux petit">(n’est pas enregistré)</span><input id="proto_tel_tuteur" type="tel" placeholder="06 12 34 56 78"></label>
+      <label>Le lien expire dans<select id="proto_duree"><option value="24">24 heures</option><option value="48" selected>48 heures</option><option value="72">72 heures</option></select></label></div>
+    <div class="actions"><button type="button" class="btn" data-a="protoLienCreer">📱 Créer le lien et l’envoyer par SMS</button></div>
+    <p class="doux petit">Remplis d’abord tout le protocole : le tuteur signe le document tel qu’il est au moment de l’envoi. Le SMS part de ton téléphone.</p></div>`;
+  return `<div class="lien-tuteur" id="protoSigAttente"><p>⏳ <b>En attente de la signature du tuteur</b> · lien valable jusqu’au ${fmtDT(x.expire)}</p>
+    <div class="actions"><a class="btn sec" href="sms:${esc((x.tel || '').replace(/[^\d+]/g, ''))}?&body=${encodeURIComponent(texteSms(x))}">📱 Renvoyer le SMS</a>
+      <button type="button" class="btn sec" data-a="protoLienCopier">📋 Copier le lien</button><button type="button" class="btn" data-a="protoLienVerifier">🔄 Vérifier si c’est signé</button>
+      <button type="button" class="lien petit" style="display:inline" data-a="protoLienAnnuler">Annuler le lien</button></div>
+    <p class="doux petit">La page vérifie toute seule toutes les 20 secondes. Ne modifie plus le protocole : sinon, crée un nouveau lien.</p></div>`;
+}
+A.protoLienCreer = async () => {
+  verifierMinimum();
+  const tel = val('proto_tel_tuteur'), heures = +val('proto_duree') || 48;
+  if (tel && !/^[\d\s+.()-]{8,20}$/.test(tel)) throw new Error('Numéro de téléphone invalide.');
+  toast('Préparation du lien…');
+  const pdf = new Uint8Array(await fabriquerPdf()), cle = CONV.nouvelleCle();
+  const chiffre = await CONV.chiffrer({ pdf: enBase64(pdf), eleve: `${PROTO.eleve.prenom} ${PROTO.eleve.nom}`.trim(), classe: PROTO.eleve.classe || '', entreprise: PROTO.ent.entreprise || '' }, cle);
+  const r = await api('POST', '/api/protosig/creer', { chiffre, heures });
+  const x = { id: r.id, cle, expire: r.expire, tel };
+  memoriserLienTuteur(x); journal(`Protocole envoyé au tuteur pour signature (${PROTO.ent.entreprise || 'entreprise'})`);
+  majProto();
+  location.href = `sms:${tel.replace(/[^\d+]/g, '')}?&body=${encodeURIComponent(texteSms(x))}`;
+};
+A.protoLienCopier = async () => {
+  const x = lienTuteurMemorise(); if (!x) return;
+  try { await navigator.clipboard.writeText(urlLienTuteur(x)); toast('Lien copié : colle-le dans un SMS ou un e-mail au tuteur'); } catch { prompt('Copie ce lien :', urlLienTuteur(x)); }
+};
+A.protoLienAnnuler = async () => {
+  const x = lienTuteurMemorise(); if (!x || !confirm('Annuler ce lien ? Le tuteur ne pourra plus signer avec.')) return;
+  try { await api('POST', '/api/protosig/supprimer', { id: x.id }); } catch { /* déjà expiré */ }
+  memoriserLienTuteur(null); majProto(); toast('Lien annulé');
+};
+async function verifierLienTuteur(silencieux) {
+  const x = lienTuteurMemorise(); if (!x) return;
+  let r;
+  try { r = await api('POST', '/api/protosig/etat', { id: x.id }); }
+  catch (e) { if (/expir|introuvable/i.test(e.message)) { memoriserLienTuteur(null); majProto(); } if (!silencieux) throw e; return; }
+  if (!r.signe) { if (!silencieux) toast('Pas encore signé.'); return; }
+  const s = await CONV.dechiffrer(r.sig, x.cle);
+  Object.assign(PROTO.sigEnt, { img: s.img, cachet: s.cachet || PROTO.sigEnt.cachet, mode: 'lien', signataire: [s.nom, s.fonction].filter(Boolean).join(', '), signeLe: s.date });
+  try { await api('POST', '/api/protosig/supprimer', { id: x.id }); } catch { /* */ }
+  memoriserLienTuteur(null); journal('Protocole signé à distance par le tuteur'); majProto();
+  toast('✅ Le tuteur a signé : tu peux envoyer le protocole à ton professeur');
+}
+A.protoLienVerifier = () => verifierLienTuteur(false);
+setInterval(() => { if (document.getElementById('protoSigAttente') && !document.hidden) verifierLienTuteur(true).catch(() => {}); }, 20000);

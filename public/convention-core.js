@@ -362,7 +362,9 @@ const CONV = (() => {
       traits = 0;
     }
     const pos = ev => { const r = canvas.getBoundingClientRect(); return [ev.clientX - r.left, ev.clientY - r.top]; };
-    canvas.addEventListener('pointerdown', ev => { dessin = true; dernier = pos(ev); try { canvas.setPointerCapture(ev.pointerId); } catch { /* stylet ou souris sans capture */ } ev.preventDefault(); });
+    // Si la zone a changé de taille depuis sa création (affichée après coup, rotation du téléphone) et qu'elle est vide, on la redimensionne.
+    const tailleJuste = () => { const r = canvas.getBoundingClientRect(), ratio = window.devicePixelRatio || 1; return Math.abs(canvas.width - r.width * ratio) < 3 && Math.abs(canvas.height - r.height * ratio) < 3; };
+    canvas.addEventListener('pointerdown', ev => { if (traits === 0 && !tailleJuste()) dimensionner(); dessin = true; dernier = pos(ev); try { canvas.setPointerCapture(ev.pointerId); } catch { /* stylet ou souris sans capture */ } ev.preventDefault(); });
     canvas.addEventListener('pointermove', ev => {
       if (!dessin) return; const p = pos(ev);
       ctx.beginPath(); ctx.moveTo(dernier[0], dernier[1]); ctx.lineTo(p[0], p[1]); ctx.stroke(); dernier = p; traits++; ev.preventDefault();

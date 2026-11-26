@@ -355,3 +355,8 @@ details.aide summary { cursor: pointer; font-weight: 600; font-size: .88rem; }
 .pf-note { width: 70px; margin: 0; padding: 4px 6px; }
 .pf-partie-prof { border: 1px solid var(--trait); border-radius: 10px; padding: 8px 12px; margin-bottom: 10px; }
 .pf-champ { margin: 4px 0 8px; }
+
+/* Signature du protocole à distance */
+.lien-tuteur { border: 1px dashed #9aa3b5; border-radius: 10px; padding: 10px 12px; margin: 8px 0; background: #f8f9fc; }
+.pdf-pages { display: flex; flex-direction: column; gap: 10px; }
+.pdf-page { width: 100%; height: auto; border: 1px solid var(--trait); box-shadow: 0 2px 8px rgba(0,0,0,.12); background: #fff; }
