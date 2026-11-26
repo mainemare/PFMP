@@ -9,7 +9,17 @@ const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const API = (window.STAGES_API || '').trim();
-const P = Object.fromEntries(location.hash.slice(1).split('&').filter(Boolean).map(x => { const i = x.indexOf('='); return [x.slice(0, i), decodeURIComponent(x.slice(i + 1))]; }));
+// Lien : « #<identifiant 16 car.><clé 64 car.> » en hexadécimal (format robuste pour les SMS),
+// ou ancien format « #p=<identifiant>&k=<clé> ».
+function lireLien() {
+  const h = decodeURIComponent(location.hash.slice(1)), m = /[a-f0-9]{80}/i.exec(h);
+  if (m) {
+    const hex = m[0].toLowerCase(), octets = hex.slice(16).match(/../g).map(x => String.fromCharCode(parseInt(x, 16))).join('');
+    return { p: hex.slice(0, 16), k: btoa(octets).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '') };
+  }
+  return Object.fromEntries(h.split('&').filter(Boolean).map(x => { const i = x.indexOf('='); return [x.slice(0, i), x.slice(i + 1)]; }));
+}
+const P = lireLien();
 const ERREURS = { lien_expire: 'Ce lien a expiré ou a été annulé. Demandez à l’élève de vous en envoyer un nouveau.', deja_signe: 'Ce protocole a déjà été signé. Merci !',
   trop_essais: 'Trop d’essais : réessayez dans un quart d’heure.', trop_gros: 'Les images sont trop lourdes : reprenez une photo plus petite.', protosig_indisponible: 'La signature à distance n’est pas disponible sur ce serveur.' };
 const E = { d: null, proto: null, pad: null, img: '', cachet: '', mode: 'pad' };
@@ -53,7 +63,7 @@ function telecharger(octets) { const a = document.createElement('a'); a.href = U
 
 /* ---------- Ouverture du lien ---------- */
 async function init() {
-  if (!/^[a-f0-9]{16}$/.test(P.p || '') || !P.k) return message('Lien incomplet', 'Ouvrez le lien complet reçu par SMS.');
+  if (!/^[a-f0-9]{16}$/.test(P.p || '') || !P.k) return message('Lien incomplet', 'Le lien reçu par SMS n’a pas été ouvert en entier. Touchez-le à nouveau, ou copiez-le en entier dans le navigateur. Si cela ne marche pas, demandez à l’élève de vous l’envoyer par e-mail (bouton « Copier le lien »).');
   let r;
   try { r = await api('/api/protosig/lire', { id: P.p }); } catch (e) { return message('Lien indisponible', esc(e.message)); }
   try { E.d = await CONV.dechiffrer(r.chiffre, P.k); } catch { return message('Lien incomplet', 'Le lien a été coupé : ouvrez-le en entier, ou demandez à l’élève de vous le renvoyer.'); }

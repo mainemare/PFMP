@@ -268,8 +268,12 @@ C.protoCachetPhoto = async el => { PROTO.sigEnt.cachet = await CONV.photoEnImage
 const cleLienTuteur = () => 'protosig_' + (PROTO.demandeId || 'libre');
 function lienTuteurMemorise() { try { const x = JSON.parse(localStorage.getItem(cleLienTuteur()) || 'null'); return x && new Date(x.expire) > new Date() ? x : null; } catch { return null; } }
 function memoriserLienTuteur(x) { try { if (x) localStorage.setItem(cleLienTuteur(), JSON.stringify(x)); else localStorage.removeItem(cleLienTuteur()); } catch { /* stockage indisponible */ } }
-const urlLienTuteur = x => location.href.replace(/[#?].*$/, '').replace(/[^/]*$/, '') + 'signature-tuteur.html#p=' + x.id + '&k=' + x.cle;
-const texteSms = x => `Bonjour, voici le protocole d’accord de stage de ${PROTO.eleve.prenom || S.el.profil.prenom} (lycée Raymond Queneau, Yvetot) à lire et à signer : ${urlLienTuteur(x)} (lien valable jusqu’au ${fmtDT(x.expire)}). Merci !`;
+// Lien robuste pour les SMS : après « # », une seule suite de chiffres et de lettres a-f (identifiant puis clé en hexadécimal),
+// sans « & », « = », « - » ni « _ » que certaines applications de SMS coupent. La clé n'est jamais envoyée au serveur.
+const cleHex = b64 => [...atob(b64.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - b64.length % 4) % 4))].map(c => c.charCodeAt(0).toString(16).padStart(2, '0')).join('');
+const urlLienTuteur = x => location.href.replace(/[#?].*$/, '').replace(/[^/]*$/, '') + 'signature-tuteur.html#' + x.id + cleHex(x.cle);
+// Le lien est seul sur la dernière ligne, sans rien derrière : aucune application ne le colle au texte qui suit.
+const texteSms = x => `Bonjour, voici le protocole d’accord de stage de ${PROTO.eleve.prenom || S.el.profil.prenom} (lycée Raymond Queneau, Yvetot) à compléter et à signer avant le ${fmtDT(x.expire)}. Merci !\n${urlLienTuteur(x)}`;
 function blocLienTuteur() {
   const x = lienTuteurMemorise();
   if (!x) return `<div class="lien-tuteur"><p class="petit">Envoie un lien par SMS à ton tuteur : sur son téléphone, l’entreprise <b>complète sa partie</b> (coordonnées, horaires), relit le protocole, puis signe avec le doigt ou prend son tampon en photo. Tout revient ensuite ici.</p>
