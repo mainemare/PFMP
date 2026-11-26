@@ -52,6 +52,8 @@ const DEF = {
   prof: () => ({ conseils: [], propositions: [], niveauForce: null, dates: null, urgence: null, validations: {}, visites: [], bord: {}, dispensePhoto: null, portfolio: null }),
   bord: () => ({ jours: {} }),
   portfolio: () => ({}),
+  // Attestation de stage signée (photo ou PDF) : même dépôt que le CV, dans le dossier privé du Drive.
+  attestation: () => ({ deposeLe: null, fichierLe: null, taille: 0, aRelire: false, valide: false, correction: null, annotations: null }),
 };
 const normaliser = docs => { const o = {}; for (const k in DEF) o[k] = Object.assign(DEF[k](), (docs && docs[k]) || {}); return o; };
 const CHAMPS = {
@@ -60,7 +62,7 @@ const CHAMPS = {
     ['pro', 'Me présenter professionnellement', 'Ma formation, mon projet, ce que je sais faire, pourquoi cette entreprise m’intéresse…', 4],
     ['motsCles', 'Mes mots-clés à ne pas oublier', 'dates du stage · durée · convention · à qui envoyer mon CV · merci · au revoir', 3]],
 };
-const TITRES = { cv: 'CV', lettre: 'Lettre de motivation', memento: 'Memento d’appel' };
+const TITRES = { cv: 'CV', lettre: 'Lettre de motivation', memento: 'Memento d’appel', attestation: 'Attestation de stage' };
 
 /* ---------- Serveur ---------- */
 // Deux modes : API Google Apps Script (STAGES_API renseignée dans config.js, pages sur GitHub Pages)
@@ -208,7 +210,11 @@ function render() {
   const prof = S.user.role !== 'eleve';   // personnel : professeur ou DDFPT
   if (carte) { carte.remove(); carte = null; }
   if (typeof fermerCarteProf === 'function') fermerCarteProf();
-  app.innerHTML = entete(prof) + `<main>${prof ? vueProf() : vueEleve()}</main>` + (prof && S.dossier ? vueDossier() : '');
+  const ph = !prof && S.vue !== 'fin' && PHASES.find(p => p.id === phaseDeVue(S.vue));
+  app.innerHTML = entete(prof) + `<main>${ph ? `<div class="bandeau-phase" style="--ph:${ph.c}"><span>${ph.n}</span><div><b>${ph.ic} ${ph.titre}</b><br>${ph.sous}</div></div>` : ''}${prof ? vueProf() : vueEleve()}</main>` + (prof && S.dossier ? vueDossier() : '');
+  // Téléphone : le menu défile jusqu'à la rubrique ouverte (ou l'étape en cours depuis l'accueil).
+  const nv = $('nav.nav-eleve'), cible = nv && (S.vue === 'accueil' ? nv.querySelector('.nav-groupe.ici') : nv.querySelector('.actif'));
+  if (cible && nv.scrollWidth > nv.clientWidth) nv.scrollLeft = cible.offsetLeft - nv.offsetLeft - 10;
   if (!prof && S.vue === 'entreprises') afficherCarte();
   if (!prof && S.vue === 'protocole' && typeof majTotaux === 'function') { majTotaux(); initPadProtocole(); }
   if (!prof && S.vue === 'cv' && $('#cv_apercu')) majApercuCV().catch(e => toast(e.message, true));
@@ -225,11 +231,10 @@ function entete(prof) {
       : [['tableau', '📊 Tableau de bord'], ['alertes', '🔔 Alertes', nu], ['visites', '🗓️ Visites', ns], ['carte', '🗺️ Carte'], ['classes', '📅 Classes et dates'], ['entreprises', '🏢 Entreprises', np], ['offres', '📢 Offres de stage', no]];
   } else {
     const d = S.el, nl = d.prof.conseils.filter(c => !d.etat.conseilsLus.includes(c.id)).length;
-    nav = [['accueil', '🏠 Accueil', nl], ['profil', '👤 Mon profil'], ['entreprises', '🏢 Entreprises'], ['offres', '📢 Offres de stage', nbOffresEleve()], ['suivi', '📞 Mes appels', relancesDues(d).length], ['bord', '📓 Journal de bord', nbBordEnRetard(d)], ['portfolio', '🗂️ Portfolio'],
-      ['memento', '📝 Memento'], ['cv', '📄 CV'], ['lettre', '✉️ Lettre'], ['protocole', '🤝 Protocole']];
+    nav = navEleve(d, { accueil: nl, offres: nbOffresEleve(), suivi: relancesDues(d).length, bord: nbBordEnRetard(d) });
   }
   return `<header class="top"><div class="logo">🎓 Suivi des stages${prof ? (S.user.role === 'ddfpt' ? ' · Console DDFPT' : ' · Console professeur') : ''}</div>
-    <nav>${nav.map(([v, l, n]) => `<button data-a="aller" data-v="${v}" class="${S.vue === v ? 'actif' : ''}">${l}${n ? `<span class="pastille">${n}</span>` : ''}</button>`).join('')}</nav>
+    <nav class="${prof ? '' : 'nav-eleve'}">${typeof nav === 'string' ? nav : nav.map(([v, l, n]) => `<button data-a="aller" data-v="${v}" class="${S.vue === v ? 'actif' : ''}">${l}${n ? `<span class="pastille">${n}</span>` : ''}</button>`).join('')}</nav>
     <div class="qui"><span>${esc(nomComplet(S.user))}</span><button data-a="deconnexion">Déconnexion</button></div></header>`;
 }
 
@@ -296,6 +301,7 @@ function vueEleve() {
     case 'offres': return vueOffresEleve();
     case 'bord': return vueJournalBord();
     case 'portfolio': return vuePortfolio();
+    case 'fin': return vueFinStage();
     case 'suivi': return vueSuivi();
     case 'memento': case 'cv': case 'lettre': return vueDoc(S.vue);
     case 'protocole': return vueProtocole();
@@ -340,14 +346,15 @@ function vueAccueil() {
   const nonLus = d.prof.conseils.filter(c => !d.etat.conseilsLus.includes(c.id)), rel = relancesDues(d);
   const todo = [[d.profil.residences.some(r => r.lat != null), 'Compléter mon profil et mes communes de résidence', 'profil'], [!!d.memento.accroche.trim(), 'Préparer mon memento d’appel', 'memento'],
     [!!d.cv.deposeLe, 'Déposer mon CV', 'cv'], [!!d.lettre.deposeLe, 'Déposer ma lettre de motivation', 'lettre'], [d.demandes.liste.length > 0, 'Sélectionner des entreprises à appeler', 'entreprises']];
-  return `<div class="alerte ${al.c}" role="alert">${al.h}</div>${blocVisiteEleve(d)}${blocRappelBord(d)}
-  <section class="carte"><h2>Où j’en suis</h2>${barre(n, false, d)}${progressionRecherche(d) ? `<p style="margin:10px 0 0">${progressionRecherche(d)}</p>` : ''}
+  const ph = phaseEleve(d), recherche = ph === 'avant' || n < 5;
+  return `<div class="alerte ${al.c}" role="alert">${al.h}</div>${blocVisiteEleve(d)}${blocRappelBord(d)}${blocParcours(d)}
+  ${recherche ? `<section class="carte"><h2>🔎 Ma recherche de stage : où j’en suis</h2>${barre(n, false, d)}${progressionRecherche(d) ? `<p style="margin:10px 0 0">${progressionRecherche(d)}</p>` : ''}
     <div class="etapes">${NIV.map((v, i) => `<div class="${i <= n ? 'fait' : ''}" style="${i <= n ? `background:${NIV[n].c}` : ''}"><b>${i}</b>${v.l}</div>`).join('')}</div>
     <p class="doux petit" style="margin-top:10px">Le niveau avance tout seul : 1 dès qu’une entreprise est sélectionnée, 2 (recherche active) à partir de ${SEUIL_ACTIVE} entreprises contactées — très active à partir de ${SEUIL_TRES_ACTIVE} —, puis selon le statut de tes demandes (rendez-vous, protocole, convention).</p></section>
-  <div class="grille">
-    <section class="carte"><h2>Mes prochaines actions</h2>
+  ` : ''}<div class="grille">
+    ${recherche ? `<section class="carte"><h2>Mes prochaines actions</h2>
       ${rel.length ? `<p>📞 <b>${rel.length} relance(s) à faire :</b> ${rel.map(x => esc(x.nom)).join(', ')} <button class="btn mini" data-a="aller" data-v="suivi">Voir</button></p>` : ''}
-      ${todo.map(([ok, l, v]) => `<p>${ok ? '✅' : '⬜'} ${ok ? `<span class="doux">${l}</span>` : `<button class="lien" style="display:inline" data-a="aller" data-v="${v}">${l}</button>`}</p>`).join('')}</section>
+      ${todo.map(([ok, l, v]) => `<p>${ok ? '✅' : '⬜'} ${ok ? `<span class="doux">${l}</span>` : `<button class="lien" style="display:inline" data-a="aller" data-v="${v}">${l}</button>`}</p>`).join('')}</section>` : ''}
     <section class="carte"><h2>Conseils de mes professeurs</h2>
       ${d.prof.conseils.length ? [...d.prof.conseils].reverse().map(c => `<div class="conseil ${nonLus.includes(c) ? 'nonlu' : ''}"><div class="petit doux">${esc(c.profNom)} · ${fmtDT(c.date)}${nonLus.includes(c) ? ' · <b>nouveau</b>' : ''}</div>${esc(c.texte)}</div>`).join('') : '<p class="doux">Aucun conseil pour le moment.</p>'}
       ${nonLus.length ? '<button class="btn mini" data-a="conseilsLus">J’ai lu</button>' : ''}</section>

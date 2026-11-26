@@ -50,7 +50,7 @@ A.retirerFichier = async el => {
   S.el[t] = Object.assign(DEF[t](), await api('POST', '/api/fichier/supprimer', { type: t }));
   journal(`${TITRES[t]} retiré`); render(); toast('Document retiré');
 };
-A.voirFichier = el => ouvrirVisionneuse({ eleveId: S.user.id, type: el.dataset.t, prof: false, titre: 'Mon ' + TITRES[el.dataset.t] });
+A.voirFichier = el => ouvrirVisionneuse({ eleveId: S.user.id, type: el.dataset.t, prof: false, titre: { cv: 'Mon CV', lettre: 'Ma lettre de motivation', attestation: 'Mon attestation de stage' }[el.dataset.t] || TITRES[el.dataset.t] });
 
 /* ---------- Professeur : ouvrir et annoter ---------- */
 A.annoterFichier = el => {

@@ -8,7 +8,7 @@
  */
 const FEUILLE = 'donnees';
 const MORCEAU = 40000;                       // une cellule Google Sheets contient au plus 50 000 caracteres
-const SECTIONS = ['profil', 'cv', 'lettre', 'memento', 'demandes', 'journal', 'etat', 'prof', 'bord', 'portfolio'];
+const SECTIONS = ['profil', 'cv', 'lettre', 'memento', 'demandes', 'journal', 'etat', 'prof', 'bord', 'portfolio', 'attestation'];
 const SESSION_MS = 12 * 3600 * 1000;
 const ITERATIONS = 300;
 
@@ -164,7 +164,7 @@ function ecrireFichierConv(id, nom, obj) {
 /* ---------- CV et lettres de motivation (PDF) : dossier prive du Drive, jamais partage ----------
  * L'identifiant du fichier est garde dans le classeur sous eleve/<id>/fichier-cv (cle inaccessible par /api/doc :
  * un eleve ne peut donc pas faire lire un autre fichier du Drive). */
-const TYPES_FICHIER = ['cv', 'lettre'];
+const TYPES_FICHIER = ['cv', 'lettre', 'attestation'];
 const MAX_PDF = 4 * 1024 * 1024;
 function dossierFichiers() {
   const p = PropertiesService.getScriptProperties(), id = p.getProperty('DOSSIER_FICHIERS');

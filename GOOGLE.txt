@@ -274,3 +274,13 @@ Limites
     telephones (cle dans le lien, jamais envoyee au serveur) ; le fichier chiffre, range dans le dossier Drive des conventions,
     est supprime des que l'eleve a recupere la signature ou a l'expiration.
   Mise en place : mettez a jour Code.gs puis Deployer > Gerer les deploiements > (crayon) > Nouvelle version.
+
+18. PARCOURS EN 3 ETAPES ET FIN DE STAGE (EVALUATION, ATTESTATION DE PRESENCE)
+  - Le menu eleve est range en 3 etapes : 1 Avant le stage (recherche : profil, entreprises, offres, appels, memento, CV,
+    lettre, protocole), 2 Pendant le stage (journal de bord, portfolio), 3 Fin du stage (evaluation et attestation).
+    L'etape en cours (selon les dates de stage de la classe) est mise en avant dans le menu et sur l'accueil (« Tu es ici »).
+  - Fin du stage : bilan du journal de bord et note du portfolio ; attestation de stage pre-remplie (lycee, entreprise,
+    tuteur, eleve, classe, dates) a faire completer et signer par l'entreprise le dernier jour (jours de presence, cachet),
+    puis depot par l'eleve d'une photo ou d'un PDF (dossier prive du Drive). Le professeur et le DDFPT la verifient et la
+    valident dans le dossier de l'eleve, onglet « Attestation ».
+  Mise en place : mettez a jour Code.gs puis Deployer > Gerer les deploiements > (crayon) > Nouvelle version.
