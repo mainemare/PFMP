@@ -526,6 +526,16 @@ function purgerProtosig() {
   });
   aSupprimer.forEach(cle => supprimerDocs(cle));
 }
+// Partie « entreprise » complétée par l'entreprise elle-même : gardée dans la base pour préremplir les prochains protocoles.
+const CHAMPS_INFOS_ENTREPRISE = ['adresse', 'mail', 'tel', 'siret', 'assureur', 'contrat', 'signataire', 'fonctionSignataire', 'mailSignataire', 'lieu', 'domaine', 'tuteur', 'fonctionTuteur', 'telTuteur', 'mailTuteur'];
+function memoriserInfosEntreprise(entrepriseId, infos) {
+  const d = JSON.parse(getDoc('commun/entreprises')) || { entreprises: [] }, e = (d.entreprises || []).find(x => x.id === entrepriseId);
+  if (!e) return;
+  const p = {};
+  CHAMPS_INFOS_ENTREPRISE.forEach(k => { const v = String(infos[k] || '').trim().slice(0, 200); if (v) p[k] = v; });
+  e.protocole = Object.assign({}, e.protocole || {}, p, { majLe: new Date().toISOString() });
+  setDoc('commun/entreprises', JSON.stringify(d));
+}
 function routesProtosig(route, b, user) {
   const id = String(b.id || ''), cle = 'protosig/' + id;
   if (route === 'POST /api/protosig/creer') {
@@ -534,7 +544,8 @@ function routesProtosig(route, b, user) {
     if (!chiffre || chiffre.length > 3500000) return ko(413, 'trop_gros');
     purgerProtosig();
     const nouvel = hasard(16), fichier = ecrireFichierConv(null, 'protocole-signature-' + nouvel + '.json', { chiffre: chiffre, sig: null });
-    const m = { eleveId: user.id, cree: Date.now(), expire: Date.now() + heures * 3600 * 1000, fichier: fichier, signe: null };
+    const entrepriseId = /^[A-Za-z0-9_-]{1,40}$/.test(String(b.entrepriseId || '')) ? String(b.entrepriseId) : null;
+    const m = { eleveId: user.id, entrepriseId: entrepriseId, cree: Date.now(), expire: Date.now() + heures * 3600 * 1000, fichier: fichier, signe: null };
     setDoc('protosig/' + nouvel, JSON.stringify(m));
     return ok({ id: nouvel, expire: new Date(m.expire).toISOString() });
   }
@@ -552,6 +563,7 @@ function routesProtosig(route, b, user) {
     if (!sig || sig.length > 1500000) return ko(413, 'trop_gros');
     const f = lireFichierConv(m.fichier); f.sig = sig; f.chiffre = null; ecrireFichierConv(m.fichier, null, f);   // le protocole n'est plus utile
     m.signe = new Date().toISOString(); setDoc(cle, JSON.stringify(m));
+    if (m.entrepriseId && b.infos && typeof b.infos === 'object') memoriserInfosEntreprise(m.entrepriseId, b.infos);
     return ok({ ok: true });
   }
   if (!user || user.role !== 'eleve' || user.id !== m.eleveId) return ko(403, 'interdit');

@@ -262,9 +262,13 @@ Limites
   - Eleve : page Protocole > « Signature et cachet de l'entreprise » > « Envoyer un lien au tuteur ». Il remplit tout le
     protocole, saisit le portable du tuteur (non enregistre), choisit la duree du lien (24, 48 ou 72 h) : le SMS est prepare
     dans l'application SMS de son telephone (le lycee n'envoie pas de SMS ; le lien peut aussi etre copie).
-  - Tuteur : il ouvre le lien sans compte (page signature-tuteur.html), lit le protocole, indique son nom et sa fonction,
-    signe au doigt ou envoie la photo de sa signature, et peut photographier le tampon de l'entreprise.
-  - L'eleve recoit la signature automatiquement (verification toutes les 20 s) ; elle est placee dans la case du PDF avec la
+  - Entreprise : elle ouvre le lien sans compte (page signature-tuteur.html), COMPLETE ELLE-MEME LA PARTIE ENTREPRISE
+    (coordonnees, SIRET, assureur, signataire, tuteur) et LES HORAIRES (journee type repercutee), relit le protocole complete,
+    puis signe au doigt ou envoie la photo de sa signature, et peut photographier le tampon de l'entreprise.
+  - Pre-remplissage : l'eleve n'a pas a remplir la partie entreprise. Elle est pre-remplie avec la demande et le fichier des
+    entreprises ; quand une entreprise a deja complete un protocole, ses coordonnees (jamais celles de l'eleve) sont gardees
+    dans le fichier des entreprises (fiche > protocole) et reprises pour les eleves suivants.
+  - L'eleve recoit les reponses de l'entreprise et la signature automatiquement (verification toutes les 20 s) ; elle est placee dans la case du PDF avec la
     mention « Signe electroniquement par … le … », puis l'eleve envoie le protocole au professeur comme d'habitude.
   - Lien ephemere : il ne sert qu'une fois et expire a la date choisie. Le PDF et la signature sont chiffres sur les
     telephones (cle dans le lien, jamais envoyee au serveur) ; le fichier chiffre, range dans le dossier Drive des conventions,
