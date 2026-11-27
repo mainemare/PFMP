@@ -447,3 +447,10 @@ fieldset.c_refs label { display: inline-flex; align-items: center; gap: 6px; mar
 .ev-ap legend { font-weight: 700; font-size: .85rem; }
 .ev-ap label { display: flex; gap: 6px; align-items: center; margin: 3px 0; font-weight: 400; }
 .ev-total { position: sticky; bottom: 0; background: #eef2ff; border: 1px solid #c7d2fe; border-radius: 10px; padding: 10px 12px; margin-top: 10px; font-size: 1.02rem; z-index: 2; }
+
+/* ---------- Doublons d'entreprises ---------- */
+.liste-doublons { display: grid; gap: 8px; margin: 10px 0; }
+.doublon-ligne { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid #e5e7eb; border-radius: 10px; }
+.doublon-prof { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.doublon-prof input { min-width: 220px; margin: 0; padding: 5px 8px; font-size: .85rem; }
+.doublon-alerte .actions { margin-top: 6px; }

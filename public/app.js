@@ -563,17 +563,69 @@ A.ajouterSelection = async () => {
   await sauver('demandes'); journal(`${sel.length} entreprise(s) ajoutée(s) à la liste d’appels`);
   S.vue = 'suivi'; render(); toast('Entreprises ajoutées à tes appels');
 };
+/* ---------- Doublons : une entreprise proposée qui est déjà dans la base du lycée ---------- */
+// Nom simplifié : sans accents, ponctuation ni forme juridique (SARL, SAS, Ets…)
+const MOTS_VIDES_ENT = new Set(['sarl', 'sas', 'sasu', 'eurl', 'sa', 'sci', 'snc', 'ets', 'etablissements', 'etablissement', 'societe', 'ste', 'entreprise', 'groupe', 'et', 'de', 'des', 'du', 'la', 'le', 'les', 'l', 'd']);
+const motsEnt = s => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').split(/[^a-z0-9]+/).filter(m => m && !MOTS_VIDES_ENT.has(m));
+const chiffresTel = s => String(s || '').replace(/\D/g, '').replace(/^33/, '0').slice(-9);
+// Entreprises de la base qui ressemblent à celle proposée (nom proche ou même téléphone), les plus proches d'abord
+function entreprisesSimilaires(p, max = 5) {
+  const a = motsEnt(p.nom), ja = a.join(''), tel = chiffresTel(p.tel), ville = motsEnt(String(p.adresse || '').replace(/.*\b\d{5}\b/, '')).join(' ');
+  if (!ja && !tel) return [];
+  return S.entreprises.map(e => {
+    const b = motsEnt(e.nom), jb = b.join(''); let score = 0;
+    if (ja && ja === jb) score = 10;
+    else if (ja.length >= 4 && jb.length >= 4 && (ja.includes(jb) || jb.includes(ja))) score = 7;
+    else if (a.length && b.length) { const communs = a.filter(m => m.length >= 3 && b.includes(m)).length; score = communs ? 3 + 3 * communs / Math.max(a.length, b.length) : 0; }
+    if (tel.length === 9 && chiffresTel(e.tel) === tel) score += 6;
+    if (score && ville && motsEnt(e.adresse).join(' ').includes(ville)) score += 1;
+    return { e, score };
+  }).filter(x => x.score >= 4).sort((x, y) => y.score - x.score).slice(0, max).map(x => x.e);
+}
 A.ajoutManuel = () => modal(`<h2>Ajouter une entreprise trouvée par moi-même</h2><label>Nom de l’entreprise<input id="m_nom"></label><label>Adresse<input id="m_adresse"></label>
   <div class="deux"><label>Téléphone<input id="m_tel"></label><label>Personne à contacter<input id="m_contact"></label></div>
   <p class="doux petit">Elle est ajoutée à tes appels tout de suite, et proposée pour la base d’entreprises du lycée : un professeur ou le DDFPT la vérifiera avant qu’elle soit proposée aux autres élèves.</p>
   <button class="btn" data-a="sauverManuel">Ajouter à mes appels</button>`);
-A.sauverManuel = async () => {
-  if (!val('m_nom')) throw new Error('Indique le nom de l’entreprise.');
-  const e = { nom: val('m_nom'), adresse: val('m_adresse'), tel: val('m_tel'), contact: val('m_contact') }, dem = nouvelleDemande(e);
+A.sauverManuel = async el => {
+  const e = el && el.dataset.force ? S.manuelEnCours : { nom: val('m_nom'), adresse: val('m_adresse'), tel: val('m_tel'), contact: val('m_contact') };
+  if (!e || !e.nom) throw new Error('Indique le nom de l’entreprise.');
+  // Déjà dans la base ? L'élève choisit la fiche du lycée plutôt que d'en créer une nouvelle.
+  const sim = el && el.dataset.force ? [] : entreprisesSimilaires(e);
+  if (sim.length) {
+    S.manuelEnCours = e;
+    return modal(`<h2>🔎 Cette entreprise est peut-être déjà dans la base du lycée</h2>
+      <p>Tu as saisi <b>${esc(e.nom)}</b>${e.adresse ? ` (${esc(e.adresse)})` : ''}. Si c’est l’une de celles-ci, choisis-la : tu profites de sa fiche (adresse, carte, contact) et la base ne contiendra pas deux fois la même entreprise.</p>
+      <div class="liste-doublons">${sim.map(x => `<div class="doublon-ligne"><div><b>${esc(x.nom)}</b>${x.secteur ? ` <span class="badge clair">${esc(x.secteur)}</span>` : ''}<br><span class="petit doux">${esc(x.adresse || '')}${x.tel ? ` · ${esc(x.tel)}` : ''}</span></div>
+        <button class="btn mini" data-a="choisirBaseManuel" data-id="${x.id}">✅ C’est celle-ci</button></div>`).join('')}</div>
+      <div class="actions"><button class="btn sec" data-a="sauverManuel" data-force="1">Non, c’est une autre entreprise : l’ajouter quand même</button></div>`);
+  }
+  const dem = nouvelleDemande(e);
   S.el.demandes.liste.push(dem);
   try { dem.propositionId = (await api('POST', '/api/entreprises/proposer', { ...e, demandeId: dem.id })).id; } catch { /* serveur sans cette fonction : ajout aux appels seulement */ }
   await sauver('demandes'); journal(`Entreprise ajoutée par l’élève : ${e.nom}${dem.propositionId ? ' (proposée pour la base)' : ''}`); modal(''); S.vue = 'suivi'; render();
   toast(dem.propositionId ? 'Ajoutée à tes appels et proposée pour la base du lycée' : 'Ajoutée à tes appels');
+};
+A.choisirBaseManuel = async el => {
+  const b = S.entreprises.find(x => x.id === el.dataset.id); if (!b) return;
+  const p = S.manuelEnCours || {};
+  if (demandesP(S.el, periodeCible(S.el)).some(x => x.entrepriseId === b.id)) { modal(''); S.vue = 'suivi'; render(); return toast('Elle est déjà dans tes appels'); }
+  const dem = nouvelleDemande(b); if (!dem.contact && p.contact) dem.contact = p.contact; if (!dem.tel && p.tel) dem.tel = p.tel;
+  S.el.demandes.liste.push(dem); S.manuelEnCours = null;
+  await sauver('demandes'); journal(`Entreprise de la base ajoutée aux appels : ${b.nom}`); modal(''); S.vue = 'suivi'; render(); toast('Ajoutée à tes appels');
+};
+// Le professeur a signalé que l'entreprise proposée est déjà dans la base : l'élève choisit la fiche du lycée.
+A.choisirDoublon = async el => {
+  const x = S.el.demandes.liste.find(d => d.id === el.dataset.id); if (!x || !x.doublonDe) return;
+  const b = S.entreprises.find(e => e.id === x.doublonDe.entrepriseId);
+  if (!b) { delete x.doublonDe; await sauver('demandes'); render(); throw new Error('Cette fiche n’existe plus dans la base.'); }
+  Object.assign(x, { entrepriseId: b.id, nom: b.nom, secteur: b.secteur || x.secteur || '', adresse: b.adresse || x.adresse, tel: x.tel || b.tel || '', email: x.email || b.email || '', contact: x.contact || b.contact || '', majLe: maintenant() });
+  delete x.doublonDe; delete x.propositionId;
+  await sauver('demandes'); journal(`Entreprise reliée à la fiche de la base : ${b.nom}`); render(); toast('C’est fait : ton appel utilise maintenant la fiche du lycée');
+};
+A.refuserDoublon = async el => {
+  const x = S.el.demandes.liste.find(d => d.id === el.dataset.id); if (!x || !x.doublonDe) return;
+  if (!confirm('Garder ta propre fiche ? Préviens ton professeur si ce n’est pas la même entreprise.')) return;
+  x.doublonDe.refuseLe = maintenant(); await sauver('demandes'); render();
 };
 
 /* --- Suivi des appels --- */
@@ -584,6 +636,8 @@ function carteDemande(x, lecture) {
       <span class="badge" style="background:${c}">${l}</span></div>
     <dl>${li('Téléphone', x.tel)}${li('Adresse', x.adresse)}${li('Qui j’ai eu', x.interlocuteur)}${li('Réponse', x.reponse)}${li('Suite à donner', x.suite)}
       ${x.dateRelance ? `<dt>Relance prévue</dt><dd>${fmt(x.dateRelance)}${retard ? ' <span class="badge" style="background:#dc2626">à faire</span>' : ''}</dd>` : ''}</dl>
+    ${x.doublonDe && !x.doublonDe.refuseLe && !x.entrepriseId ? (lecture ? `<p class="petit">🔁 Signalée comme déjà dans la base (${esc(x.doublonDe.nom)}) : en attente du choix de l’élève.</p>` : `<div class="alerte attention petit doublon-alerte">📌 <b>${esc(x.doublonDe.par)}</b> t’indique que cette entreprise est déjà dans la base du lycée : <b>${esc(x.doublonDe.nom)}</b>${x.doublonDe.adresse ? ` (${esc(x.doublonDe.adresse)})` : ''}. Choisis la fiche du lycée pour ne pas créer de doublon : tes appels et notes sont conservés.
+      <div class="actions"><button class="btn mini" data-a="choisirDoublon" data-id="${x.id}">✅ Choisir l’entreprise de la base</button><button class="btn mini sec" data-a="refuserDoublon" data-id="${x.id}">Ce n’est pas la même</button></div></div>`) : ''}
     ${x.appels.length ? `<details class="petit"><summary>Historique (${x.appels.length} appel(s))</summary>${x.appels.map(a => `<div>• ${fmtDT(a.date)} — ${(STATUTS[a.statut] || [''])[0]}${a.interlocuteur ? ` — ${esc(a.interlocuteur)}` : ''}${a.reponse ? ` : ${esc(a.reponse)}` : ''}</div>`).join('')}</details>` : ''}
     ${lecture ? (x.protocoleEnvoyeLe ? `<p class="petit">🤝 Protocole d’accord envoyé le ${fmtDT(x.protocoleEnvoyeLe)}</p>` : '') : `<div class="actions"><button class="btn mini" data-a="fiche" data-id="${x.id}">📞 Fiche d’appel</button><button class="btn mini sec" data-a="protocolePour" data-id="${x.id}">🤝 Protocole d’accord${x.protocoleEnvoyeLe ? " ✓" : ""}</button><button class="btn mini danger" data-a="supDemande" data-id="${x.id}">Retirer</button></div>`}</div>`;
 }

@@ -545,12 +545,15 @@ function sectionPropositions() {
   return `<section class="carte propositions"><h2>🆕 Entreprises proposées par les élèves (${l.length})</h2>
     <p class="doux petit">Ces entreprises ont été trouvées par des élèves. Vérifiez-les (et localisez l’adresse) avant de les ajouter à la base : elles seront alors proposées aux autres élèves.</p>
     <div class="table-scroll"><table><tr><th>Entreprise</th><th>Adresse / contact</th><th>Proposée par</th><th></th></tr>
-    ${l.map(p => { const cl = S.classes.find(c => c.id === p.classeId), deja = S.entreprises.find(e => normaliserNom(e.nom) === normaliserNom(p.nom));
-      return `<tr><td><b>${esc(p.nom)}</b>${deja ? `<br><span class="badge" style="background:#b45309">déjà dans la base ?</span> <span class="petit doux">${esc(deja.adresse)}</span>` : ''}</td>
+    ${l.map(p => { const cl = S.classes.find(c => c.id === p.classeId), sim = entreprisesSimilaires(p);
+      return `<tr><td><b>${esc(p.nom)}</b>${sim.length ? `<br><span class="badge" style="background:#b45309">déjà dans la base ?</span>${sim.slice(0, 3).map(e => `<br><span class="petit doux">≈ ${esc(e.nom)} · ${esc(e.adresse || '')}</span>`).join('')}` : ''}</td>
         <td>${esc(p.adresse || '—')}<br><span class="petit doux">${esc([p.tel, p.contact].filter(Boolean).join(' · '))}</span></td>
         <td>${esc(p.eleve)}<br><span class="petit doux">${esc(cl ? cl.nom : '')} · ${fmt(p.date)}</span></td>
         <td style="white-space:nowrap"><button class="btn mini" data-a="editEnt" data-prop="${p.id}">✅ Vérifier et valider</button>
-          <button class="btn mini danger" data-a="refuserProposition" data-id="${p.id}">Refuser</button></td></tr>`; }).join('')}</table></div></section>`;
+          <button class="btn mini danger" data-a="refuserProposition" data-id="${p.id}">Refuser</button>
+          <div class="doublon-prof"><input list="dl_base_ent" class="dbl_choix" aria-label="Entreprise de la base" placeholder="Choisir dans la base…" value="${sim.length ? esc(libelleEnt(sim[0])) : ''}">
+            <button class="btn mini sec" data-a="propDoublon" data-id="${p.id}">🔁 Déjà dans la base : prévenir l’élève</button></div></td></tr>`; }).join('')}</table></div>
+    <datalist id="dl_base_ent">${S.entreprises.map(e => `<option value="${esc(libelleEnt(e))}">`).join('')}</datalist></section>`;
 }
 // Retire la proposition et, si elle est validée, relie la demande de l'élève à la fiche de la base (carte, secteur…).
 async function retirerProposition(id, entreprise) {
@@ -563,6 +566,23 @@ async function retirerProposition(id, entreprise) {
   }
   return prop;
 }
+const libelleEnt = e => `${e.nom}${e.adresse ? ' · ' + e.adresse : ''}`;
+// La proposition est un doublon : elle est retirée et l'élève est prévenu ; c'est lui qui choisit la fiche de la base.
+A.propDoublon = async el => {
+  const p = (S.propositionsEnt || []).find(x => x.id === el.dataset.id); if (!p) return;
+  const saisi = el.closest('td').querySelector('.dbl_choix').value.trim(), b = S.entreprises.find(e => libelleEnt(e) === saisi) || S.entreprises.find(e => e.nom === saisi);
+  if (!b) throw new Error('Choisissez l’entreprise dans la liste de la base.');
+  await retirerProposition(p.id, null);
+  if (p.eleveId) {
+    if (p.demandeId) {
+      const k = `eleve/${p.eleveId}/demandes`, dem = (await getDoc(k)) || { liste: [] }, x = (dem.liste || []).find(y => y.id === p.demandeId);
+      if (x) { x.doublonDe = { entrepriseId: b.id, nom: b.nom, adresse: b.adresse || '', par: nomComplet(S.user), date: maintenant() }; await putDoc(k, dem); }
+    }
+    await mutProf(p.eleveId, q => q.conseils.push({ id: uid(), date: maintenant(), profNom: nomComplet(S.user),
+      texte: `L’entreprise « ${p.nom} » que tu as ajoutée est déjà dans la base du lycée sous le nom « ${b.nom} »${b.adresse ? ` (${b.adresse})` : ''}. Dans « Mes appels », choisis la fiche du lycée : tes appels et tes notes sont conservés.` }));
+  }
+  render(); toast(`Proposition retirée : ${p.eleve || 'l’élève'} est prévenu(e)`);
+};
 A.refuserProposition = async el => {
   const p = (S.propositionsEnt || []).find(x => x.id === el.dataset.id);
   if (!p || !confirm(`Refuser « ${p.nom} » ? Elle restera dans les appels de l’élève, mais ne sera pas ajoutée à la base.`)) return;
