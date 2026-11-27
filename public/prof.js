@@ -144,8 +144,9 @@ A.supEleve = async () => {
   if (!confirm(`Supprimer définitivement le compte et le dossier de ${nomEleve(e)} ?`)) return;
   await api('POST', '/api/admin/supprimer', { id: e.id }); S.dossier = null; await chargerEleves(); render();
 };
-const dosSuivi = e => {
-  const d = e.d, ps = periodesEleve(d), carte = x => blocProtocoleProf(e, x) + blocPronoteProf(e, x) + blocConventionProf(e, x) + carteDemande(x, true);
+const dosSuivi = e => blocPriseEnMain(e) + dosSuiviListe(e);
+const dosSuiviListe = e => {
+  const d = e.d, ps = periodesEleve(d), carte = x => blocProtocoleProf(e, x) + blocPronoteProf(e, x) + blocValiderSansDoc(e, x) + blocConventionProf(e, x) + carteDemande(x, true);
   if (!d.demandes.liste.length) return '<p class="doux">L’élève n’a encore sélectionné aucune entreprise.</p>';
   if (ps.length < 2) return [...d.demandes.liste].reverse().map(carte).join('');
   // Plusieurs périodes : les demandes sont séparées, période par période (la période en cours d'abord).
@@ -368,8 +369,8 @@ function tableEnt() {
 I.qEnt = el => { S.qEnt = el.value; $('#tableEnt').innerHTML = tableEnt(); };
 C.secteurBase = el => { choisirSecteur(el.value); $('#tableEnt').innerHTML = tableEnt(); };
 // Dossier élève : la liste « Proposer une entreprise » se filtre par secteur et se trie par distance de l'élève.
-function optionsProposer(e) {
-  const sect = $('#k_secteur') ? $('#k_secteur').value : S.secteurBase;
+function optionsProposer(e, champ = 'k_secteur') {
+  const sect = $('#' + champ) ? $('#' + champ).value : S.secteurBase;
   const l = S.entreprises.filter(x => !sect || x.secteur === sect)
     .map(x => ({ x, km: (plusProche(e.d, x) || {}).km }))
     .sort((a, b) => (a.km ?? 1e9) - (b.km ?? 1e9) || a.x.nom.localeCompare(b.x.nom, 'fr')).slice(0, 300);
@@ -720,4 +721,67 @@ A.pronoteAnnuler = async el => {
   if (!confirm('Annuler la confirmation de la convention ? La demande repassera à « Accord – protocole signé ».')) return;
   await majDemandeEleveProf(e, el.dataset.id, x => { if (x.pronote) { delete x.pronote.confirmeLe; delete x.pronote.confirmePar; delete x.pronote.declareLe; } x.statut = 'protocole'; delete x.conventionSigneeLe; });
   render(); toast('Confirmation annulée');
+};
+
+/* ---------- Prise en main par le professeur (élève qui ne fait pas sa recherche) ----------
+ * Le professeur référent ajoute lui-même une entreprise aux appels de l'élève, et peut valider le protocole
+ * et la convention sans qu'ils aient été remplis ou édités dans l'application (papier, Pronote, élève défaillant). */
+function blocPriseEnMain(e) {
+  if (!estReferentDe(e)) return '';
+  const ps = periodesEleve(e.d), act = periodeActive(e.d);
+  return `<details class="prise-main"><summary>👩‍🏫 Ajouter une entreprise pour l’élève <span class="petit doux">(s’il ne fait pas sa recherche)</span></summary>
+    <p class="petit doux">L’entreprise est ajoutée directement à ses appels (il la voit dans « Mes appels », avec votre nom). Choisissez « Accord – protocole signé » ou « Convention signée » si c’est déjà réglé : le protocole est alors validé sans document.</p>
+    <div class="deux"><label>Secteur<select id="ka_secteur" data-c="secteurPrise">${optionsSecteur(S.secteurBase)}</select></label>
+      <label>Entreprise de la base<select id="ka_ent">${optionsProposer(e, 'ka_secteur')}</select></label></div>
+    <details style="margin-bottom:12px"><summary>…ou saisir une nouvelle entreprise (ajoutée aussi à la base)</summary>
+      <label style="margin-top:8px">Nom<input id="ka_nom"></label><div style="font-weight:600;font-size:.88rem">Adresse</div>${champGeo('ka', '', null, null)}
+      <div class="deux" style="margin-top:10px"><label>Téléphone<input id="ka_tel"></label><label>Contact<input id="ka_contact"></label></div></details>
+    <div class="deux">${ps.length > 1 ? `<label>Période<select id="ka_per">${ps.map(p => `<option value="${esc(cleP(p))}" ${cleP(p) === act ? 'selected' : ''}>${esc(p.label || 'Stage')} (${fmt(p.debut)} → ${fmt(p.fin)})</option>`).join('')}</select></label>` : ''}
+      <label>Où en est-on ?<select id="ka_statut">${Object.entries(STATUTS).map(([k, [l]]) => `<option value="${k}">${l}</option>`).join('')}</select></label></div>
+    <div class="actions"><button class="btn" data-a="priseAjouter">➕ Ajouter à ses appels</button></div></details>`;
+}
+C.secteurPrise = el => { choisirSecteur(el.value); $('#ka_ent').innerHTML = optionsProposer(eleveOuvert(), 'ka_secteur'); };
+const validationSansDoc = () => ({ avis: 'favorable', motif: 'Validé par le professeur sans protocole rempli dans l’application', sansDoc: true, date: maintenant(), par: nomComplet(S.user), parId: S.user.id });
+// Statut « protocole » ou « convention » posé par le professeur : protocole validé (sans document), et convention confirmée.
+async function forcerStatut(e, id, statut) {
+  if (!['protocole', 'convention'].includes(statut)) return;
+  const v = validationDe(e.d, id);
+  if (!(v && v.avis === 'favorable')) await mutProf(e.id, p => { p.validations = p.validations || {}; p.validations[id] = validationSansDoc(); });
+  await majDemandeEleveProf(e, id, x => {
+    if (statut === 'convention') {
+      const t = maintenant();
+      x.pronote = Object.assign(x.pronote || {}, { confirmeLe: t, confirmePar: nomComplet(S.user), sansEdition: true }); if (!x.pronote.editeeLe) x.pronote.editeeLe = t;
+      x.statut = 'convention'; x.conventionSigneeLe = t;
+    } else if (x.statut !== 'convention') x.statut = 'protocole';
+  });
+}
+A.priseAjouter = async () => {
+  const e = eleveOuvert(); let en = S.entreprises.find(x => x.id === val('ka_ent'));
+  if (val('ka_nom')) {
+    en = { id: uid(), nom: val('ka_nom'), secteur: val('ka_secteur'), ...lireGeo('ka'), tel: val('ka_tel'), email: '', contact: val('ka_contact'), notes: `Ajoutée par ${nomComplet(S.user)}` };
+    await assurerGeo(en); await mutCommun('entreprises', l => l.push(en));
+  }
+  if (!en) throw new Error('Choisissez une entreprise de la base ou saisissez-en une nouvelle.');
+  const per = $('#ka_per') ? val('ka_per') : periodeActive(e.d), statut = val('ka_statut') || 'a_appeler';
+  const k = `eleve/${e.id}/demandes`, dem = Object.assign(DEF.demandes(), (await getDoc(k)) || {});
+  if (dem.liste.some(x => idEnt(x.entrepriseId) === en.id && periodeDeDemande(e.d, x) === per)) throw new Error('Cette entreprise est déjà dans les appels de l’élève pour cette période.');
+  const x = Object.assign(nouvelleDemande(en), { periodeId: per, ajouteePar: nomComplet(S.user) });
+  x.statut = ['protocole', 'convention'].includes(statut) ? 'rdv' : statut;
+  dem.liste.push(x); await putDoc(k, dem); e.d.demandes = dem;
+  await forcerStatut(e, x.id, statut);
+  render(); toast('Entreprise ajoutée aux appels de l’élève');
+};
+function blocValiderSansDoc(e, x) {
+  const v = validationDe(e.d, x.id);
+  if (!estReferentDe(e) || x.statut === 'convention' || (v && v.avis === 'favorable') || protocoleAValider(e, x)) return '';
+  return `<div class="actions sans-doc"><span class="petit doux">Élève qui ne fait pas les démarches ?</span>
+    <button class="btn mini sec" data-a="validerSansDoc" data-id="${x.id}" data-s="protocole">🤝 Valider le protocole sans document</button>
+    <button class="btn mini sec" data-a="validerSansDoc" data-id="${x.id}" data-s="convention">🏁 Valider la convention sans édition</button></div>`;
+}
+A.validerSansDoc = async el => {
+  const e = eleveOuvert(), s = el.dataset.s;
+  if (!confirm(s === 'convention' ? 'Valider le protocole et la convention de cette entreprise sans document dans l’application ? La recherche de stage de l’élève sera terminée (niveau 5).'
+    : 'Valider le protocole d’accord de cette entreprise sans protocole rempli dans l’application ? La demande passe à « Accord – protocole signé ».')) return;
+  await forcerStatut(e, el.dataset.id, s);
+  render(); toast(s === 'convention' ? '✅ Convention validée : parcours de recherche terminé' : '✅ Protocole validé');
 };

@@ -337,7 +337,7 @@ function etapesPronote(dem, valide) {
   const pr = (dem && dem.pronote) || {}, signee = !!dem && dem.statut === 'convention', ok = !!dem && (signee || (valide != null ? valide : protocoleValide(dem)));
   const etape = (fait, t, d) => `<li class="${fait ? 'fait' : ''}"><span>${fait ? '✅' : '⬜'}</span><div>${t}${d ? `<br><span class="petit doux">${d}</span>` : ''}</div></li>`;
   return `<ol class="etapes-pronote">${etape(ok, 'Protocole d’accord validé par le professeur référent')}
-    ${etape(!!pr.editeeLe || signee, 'Convention éditée sur Pronote', pr.editeeLe ? `le ${fmt(pr.editeeLe)}${pr.editeePar ? ` par ${esc(pr.editeePar)}` : ''}` : '')}
+    ${etape(!!pr.editeeLe || signee, 'Convention éditée sur Pronote', pr.sansEdition ? 'validée directement par le professeur' : pr.editeeLe ? `le ${fmt(pr.editeeLe)}${pr.editeePar ? ` par ${esc(pr.editeePar)}` : ''}` : '')}
     ${etape(signee, 'Convention signée : élève (et représentant légal), entreprise, chef d’établissement', pr.confirmeLe ? `confirmée par ${esc(pr.confirmePar)} le ${fmt(pr.confirmeLe)}` : pr.declareLe ? `signalée par l’élève le ${fmt(pr.declareLe)}, en attente de confirmation` : '')}</ol>`;
 }
 function blocPronoteEleve(dem) {

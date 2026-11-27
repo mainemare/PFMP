@@ -50,7 +50,8 @@ async function ouvrirEnveloppe(cleEleve) {
 const convDe = dem => (S.convs || []).find(c => c.demandeId === dem.id);
 function protocoleValide(dem) {
   const v = dem && validationDe(S.el, dem.id);
-  return !!(v && v.avis === 'favorable' && dem.protocole && !(dem.protocole.soumisLe > v.date));
+  // sansDoc : protocole validé par le professeur sans protocole rempli dans l'application (papier, élève défaillant…)
+  return !!(v && v.avis === 'favorable' && (dem.protocole || v.sansDoc) && !(dem.protocole && dem.protocole.soumisLe > v.date));
 }
 function etatSignatures(meta) {
   return meta.roles.map(r => `<li>${meta.signatures[r] ? '✅' : '⬜'} ${esc(CONV.ROLES[r].court)}${meta.signatures[r] ? ` <span class="doux">— signé le ${fmtDT(meta.signatures[r].le)}</span>` : ''}</li>`).join('');
