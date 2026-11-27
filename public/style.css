@@ -509,3 +509,13 @@ fieldset { border: 1px solid var(--trait); border-radius: 10px; }
 /* Alertes : légère ombre pour les détacher du fond */
 .alerte { box-shadow: 0 1px 4px rgba(20, 30, 60, .06); }
 @media (max-width: 640px) { .carte > h2:first-child { margin: -14px -14px 14px; padding: 10px 14px; } }
+/* ---------- Avancement par classe (tableau de bord) ---------- */
+.stats-classe { border: 1px solid var(--trait); border-left: 6px solid var(--cc); border-radius: 12px; padding: 10px 12px; margin: 10px 0; background: #fff; }
+.stats-classe.choisie { box-shadow: 0 0 0 2px var(--cc); }
+.stats-classe .nom-classe { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; margin-bottom: 8px; }
+.stats-classe .nom-classe .lien { font-size: 1.05rem; }
+.stats.mini { grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; margin: 0; }
+.stats.mini .stat { padding: 6px 8px; border: 0; text-align: left; font: inherit; color: #fff; cursor: pointer; }
+.stats.mini .stat:disabled { opacity: .35; cursor: default; }
+.stats.mini .stat b { font-size: 1.2rem; } .stats.mini .stat span { font-size: .7rem; }
+@media (max-width: 700px) { .stats.mini { grid-template-columns: repeat(3, minmax(0, 1fr)); } }

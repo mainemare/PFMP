@@ -41,9 +41,11 @@ function vueProf() {
 
 /* ---------- Tableau de bord ---------- */
 function vueTableau() {
-  const u = urgences(), par = NIV.map((_, n) => S.eleves.filter(e => niveau(e.d) === n).length), f = S.f;
+  const f = S.f, base = f.classe ? S.eleves.filter(e => e.d.profil.classeId === f.classe) : S.eleves;
+  const u = urgences().filter(e => !f.classe || e.d.profil.classeId === f.classe), par = NIV.map((_, n) => base.filter(e => niveau(e.d) === n).length);
   return `${u.length ? `<div class="alerte urgent" role="alert">🚨 <b>Plan d’urgence à déclencher</b> : ${u.length} élève(s) à 10 jours ou moins du stage sans convention signée. <button class="btn mini" data-a="aller" data-v="alertes">Voir les alertes</button></div>` : ''}
-  <div class="stats">${NIV.map((v, n) => `<div class="stat" style="--c:${v.c}"><b>${par[n]}</b><span>${n} · ${v.l}${n === 2 && par[n] ? `<br>dont ${S.eleves.filter(e => tresActive(e.d)).length} très active(s)` : ''}</span></div>`).join('')}</div>
+  <div class="stats">${NIV.map((v, n) => `<div class="stat" style="--c:${v.c}"><b>${par[n]}</b><span>${n} · ${v.l}${n === 2 && par[n] ? `<br>dont ${base.filter(e => tresActive(e.d)).length} très active(s)` : ''}</span></div>`).join('')}</div>
+  ${statsParClasse()}
   <section class="carte filtres">
     <label>Rechercher un élève<input data-i="filtre" data-k="q" value="${esc(f.q)}" placeholder="Nom ou prénom"></label>
     <label>Classe<select data-c="filtre" data-k="classe"><option value="">Toutes</option>${classesVisibles().map(c => `<option value="${c.id}" ${f.classe === c.id ? 'selected' : ''}>${esc(c.nom)}</option>`).join('')}</select></label>
@@ -83,7 +85,7 @@ function carteEleve(e) {
       ${niveauForceDe(d) != null ? '<span class="badge clair">Niveau fixé par le prof</span>' : ''}</div></article>`;
 }
 function majListe() { const l = $('#liste'); if (l) l.innerHTML = listeClasses(); }
-C.filtre = el => { S.f[el.dataset.k] = el.type === 'checkbox' ? el.checked : el.value; majListe(); };
+C.filtre = el => { S.f[el.dataset.k] = el.type === 'checkbox' ? el.checked : el.value; if (el.dataset.k === 'classe') render(); else majListe(); };
 I.filtre = C.filtre;
 A.ouvrir = el => { S.dossier = el.dataset.id; S.onglet = el.dataset.o || 'synthese'; render(); };
 A.fermerDossier = () => { S.dossier = null; render(); };
@@ -792,4 +794,21 @@ A.validerSansDoc = async el => {
     : 'Valider le protocole d’accord de cette entreprise sans protocole rempli dans l’application ? La demande passe à « Accord – protocole signé ».')) return;
   await forcerStatut(e, el.dataset.id, s);
   render(); toast(s === 'convention' ? '✅ Convention validée : parcours de recherche terminé' : '✅ Protocole validé');
+};
+
+/* ---------- Tableau de bord : avancement par classe (professeur : ses classes ; DDFPT : toutes) ---------- */
+function statsParClasse() {
+  const cls = classesVisibles().map(c => ({ c, els: S.eleves.filter(e => e.d.profil.classeId === c.id) })).filter(g => g.els.length);
+  if (!cls.length || (cls.length < 2 && !S.f.classe)) return '';
+  return `<section class="carte stats-classes"><h2>📊 Avancement par classe</h2>
+    <p class="petit doux">Cliquez sur un nombre pour afficher les élèves de ce niveau dans la liste.</p>${cls.map(({ c, els }) => {
+      const par = NIV.map((_, n) => els.filter(e => niveau(e.d) === n).length), urg = els.filter(e => enUrgence(e.d)).length, choisie = S.f.classe === c.id;
+      return `<div class="stats-classe ${choisie ? 'choisie' : ''}" style="--cc:${esc(c.couleur)}"><div class="nom-classe"><button type="button" class="lien" data-a="statsClasse" data-cl="${c.id}"><b>${esc(c.nom)}</b></button>
+          <span class="petit doux">${els.length} élève(s) · ${par[5]} convention(s)</span>${urg ? `<span class="badge" style="background:#dc2626">🚨 ${urg} en urgence</span>` : ''}</div>
+        <div class="stats mini">${NIV.map((v, n) => `<button type="button" class="stat" style="--c:${v.c}" data-a="statsClasse" data-cl="${c.id}" data-n="${n}" title="${esc(c.nom)} : ${par[n]} élève(s) — ${v.l}" ${par[n] ? '' : 'disabled'}><b>${par[n]}</b><span>${n} · ${v.l}</span></button>`).join('')}</div></div>`; }).join('')}
+    ${S.f.classe ? '<div class="actions"><button class="btn mini sec" data-a="statsClasse" data-cl="">Toutes les classes</button></div>' : ''}</section>`;
+}
+A.statsClasse = el => {
+  S.f.classe = el.dataset.cl; S.f.niveau = el.dataset.n == null ? '' : el.dataset.n; S.f.q = ''; S.f.urg = false;
+  render(); if (el.dataset.n != null) { const l = $('#liste'); if (l) l.scrollIntoView({ behavior: 'smooth' }); }
 };
