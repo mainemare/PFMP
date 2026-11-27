@@ -17,6 +17,10 @@ function phaseEleve(d) {
 }
 const phaseDeVue = v => (PHASES.find(p => p.vues.some(([x]) => x === v)) || {}).id;
 
+// La convention n'apparaît qu'une fois un protocole signé (accord de l'entreprise) pour la période en cours.
+const protocoleSigne = dem => !!dem && ['protocole', 'convention'].includes(dem.statut);
+const libVue = (d, v, l) => v === 'protocole' && !demandesP(d).some(protocoleSigne) ? '🤝 Protocole' : l;
+
 /* ---------- Menu élève groupé par étape ---------- */
 function navEleve(d, pastilles) {
   const ici = phaseEleve(d), bouton = ([v, l]) => {
@@ -24,7 +28,7 @@ function navEleve(d, pastilles) {
     return `<button data-a="aller" data-v="${v}" class="${S.vue === v ? 'actif' : ''}">${l}${n ? `<span class="pastille">${n}</span>` : ''}</button>`;
   };
   return bouton(['accueil', '🏠 Accueil']) + PHASES.map(p => `<div class="nav-groupe ${p.id === ici ? 'ici' : ''}" style="--ph:${p.c}" role="group" aria-label="${p.titre}">
-    <span class="nav-etape">${p.n} · ${p.titre}</span>${p.vues.map(bouton).join('')}</div>`).join('');
+    <span class="nav-etape">${p.n} · ${p.titre}</span>${p.vues.map(([v, l]) => bouton([v, libVue(d, v, l)])).join('')}</div>`).join('');
 }
 
 /* ---------- Avancement de chaque rubrique (barres de progression) ---------- */
@@ -62,7 +66,7 @@ const coulAv = p => p >= 100 ? '#16a34a' : p >= 60 ? '#0d9488' : p >= 30 ? '#ca8
 function barresPhase(d, p, ici) {
   const lignes = p.vues.filter(([v]) => AVANCEMENT[v]).map(([v, l]) => [v, l, ...AVANCEMENT[v](d)]);
   const moy = lignes.length ? Math.round(lignes.reduce((s, x) => s + x[2], 0) / lignes.length) : 0;
-  return { moy, html: `<div class="barres">${p.vues.map(([v, l]) => { const a = AVANCEMENT[v];
+  return { moy, html: `<div class="barres">${p.vues.map(([v, l0]) => { const a = AVANCEMENT[v], l = libVue(d, v, l0);
     if (!a) return `<button class="barre-ligne sans" data-a="aller" data-v="${v}"><span class="barre-nom">${l}</span><span class="petit doux">à consulter</span></button>`;
     const [pc, txt] = a(d);
     return `<button class="barre-ligne" data-a="aller" data-v="${v}" title="${esc(txt)}"><span class="barre-nom">${l}</span>

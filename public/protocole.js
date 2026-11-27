@@ -341,6 +341,7 @@ function etapesPronote(dem, valide) {
     ${etape(signee, 'Convention signée : élève (et représentant légal), entreprise, chef d’établissement', pr.confirmeLe ? `confirmée par ${esc(pr.confirmePar)} le ${fmt(pr.confirmeLe)}` : pr.declareLe ? `signalée par l’élève le ${fmt(pr.declareLe)}, en attente de confirmation` : '')}</ol>`;
 }
 function blocPronoteEleve(dem) {
+  if (!protocoleSigne(dem)) return '';   // la rubrique convention n'apparaît qu'une fois le protocole signé
   const pr = (dem && dem.pronote) || {}, signee = !!dem && dem.statut === 'convention', ok = !!dem && (protocoleValide(dem) || signee);
   return `<section class="carte pronote"><h2>🏁 Étape finale : la convention de stage sur Pronote</h2>
     <p>Une fois ton protocole validé, ta <b>convention de stage est éditée sur Pronote</b>. Quand elle est signée par tout le monde, ta recherche de stage est terminée.</p>
