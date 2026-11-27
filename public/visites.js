@@ -105,19 +105,51 @@ A.agMois = el => {
 };
 
 /* ---------- Élèves à suivre ---------- */
+// Élèves et entreprises de stage, regroupés par classe (repliables) et dans l'ordre chronologique :
+// date de la visite si elle est planifiée, sinon date de début du stage.
+const cleRepliVis = () => 'stages_visRepli_' + S.user.id;
+function classesRepliees() { try { return JSON.parse(localStorage.getItem(cleRepliVis()) || '[]'); } catch { return []; } }
+function memoriserRepli(l) { try { localStorage.setItem(cleRepliVis(), JSON.stringify(l)); } catch { /* stockage indisponible */ } }
 function elevesASuivre() {
   const l = mesEleves();
   if (!l.length) return `<section class="carte"><h2>👥 Mes élèves en stage</h2><p class="doux">Vous n’êtes professeur référent d’aucune classe : choisissez l’élève dans « Nouvelle visite ».</p></section>`;
-  return `<section class="carte"><h2>👥 Mes élèves en stage (${l.length})</h2><div class="table-scroll"><table><tr><th>Élève</th><th>Stage</th><th>Entreprise</th><th>Visite</th><th></th></tr>
-    ${l.map(e => {
-      const dt = datesEleve(e.d), ent = entrepriseStage(e.d), cl = classeDe(e.d), vs = (e.d.prof.visites || []).filter(v => v.profId === S.user.id && v.statut !== 'annulee');
-      return `<tr><td><span class="pastille-classe" style="background:${esc(cl ? cl.couleur : '#94a3b8')}"></span><b>${esc(nomEleve(e))}</b><br><span class="petit doux">${esc(cl ? cl.nom : '')}</span></td>
-        <td class="petit">${dt ? `du ${fmt(dt.debut)}<br>au ${fmt(dt.fin)}` : '<span class="doux">non fixé</span>'}</td>
-        <td class="petit">${ent ? `<b>${esc(ent.nom)}</b><br>${esc(ent.adresse)}` : '<span class="doux">pas encore d’entreprise</span>'}</td>
-        <td class="petit">${vs.length ? vs.map(v => `<button type="button" class="lien" data-a="agOuvrir" data-id="${v.id}">${v.statut === 'faite' ? '✅' : v.mode === 'visio' ? '💻' : '🚗'} ${fmt(v.date)} ${esc(v.heure)}</button>`).join('') : '<span class="badge" style="background:#b45309">à planifier</span>'}</td>
-        <td><button type="button" class="btn mini sec" data-a="agNouvelle" data-eleve="${e.id}" data-date="${dt && dt.debut > today() ? dt.debut : ''}">Planifier</button></td></tr>`;
-    }).join('')}</table></div></section>`;
+  const infos = l.map(e => {
+    const dt = datesEleve(e.d), vs = (e.d.prof.visites || []).filter(v => v.profId === S.user.id && v.statut !== 'annulee').sort((a, b) => (a.date + a.heure).localeCompare(b.date + b.heure));
+    const prochaine = vs.find(v => v.statut === 'prevue' && v.date >= today()) || vs[vs.length - 1];
+    return { e, dt, vs, ent: entrepriseStage(e.d), cle: (prochaine ? prochaine.date + ' ' + prochaine.heure : '') || (dt ? dt.debut : '') || '9999' };
+  });
+  const ordre = [...classesVisibles(), { id: '', nom: 'Autres élèves', couleur: '#94a3b8' }];
+  const groupes = ordre.map(c => ({ c, l: infos.filter(x => (c.id ? x.e.d.profil.classeId === c.id : !ordre.some(o => o.id && o.id === x.e.d.profil.classeId)))
+    .sort((a, b) => a.cle.localeCompare(b.cle) || nomEleve(a.e).localeCompare(nomEleve(b.e), 'fr')) })).filter(g => g.l.length)
+    .sort((a, b) => (!a.c.id) - (!b.c.id) || a.l[0].cle.localeCompare(b.l[0].cle));   // classes aussi dans l'ordre chronologique
+  const replies = classesRepliees();
+  return `<section class="carte"><div class="ag-tete"><h2>👥 Mes élèves en stage (${l.length})</h2><span style="flex:1"></span>
+      ${groupes.length > 1 ? '<button type="button" class="btn mini sec" data-a="visToutes" data-o="1">Tout déplier</button><button type="button" class="btn mini sec" data-a="visToutes" data-o="0">Tout replier</button>' : ''}</div>
+    <p class="petit doux">Par classe, dans l’ordre chronologique (date de la visite, sinon début du stage). Cliquez sur le nom d’une classe pour réduire ou afficher son détail.</p>
+    ${groupes.map(({ c, l: g }) => {
+      const aPlanifier = g.filter(x => !x.vs.length).length, faites = g.filter(x => x.vs.some(v => v.statut === 'faite')).length, p = c.id ? periodeCourante(c) : null;
+      return `<details class="vis-classe" style="--cc:${esc(c.couleur || '#94a3b8')}" ${replies.includes(c.id || '_') ? '' : 'open'}>
+        <summary data-a="visRepli" data-cl="${esc(c.id || '_')}"><b>${esc(c.nom)}</b><span class="petit">${g.length} élève(s)${p ? ` · ${esc(p.label || 'Stage')} : ${fmt(p.debut)} → ${fmt(p.fin)}` : ''}</span>
+          ${aPlanifier ? `<span class="badge" style="background:#b45309">${aPlanifier} à planifier</span>` : ''}${faites ? `<span class="badge" style="background:#15803d">${faites} faite(s)</span>` : ''}</summary>
+        <div class="table-scroll"><table><tr><th>Date</th><th>Entreprise</th><th>Élève</th><th>Visite</th><th></th></tr>
+        ${g.map(({ e, dt, vs, ent }) => `<tr><td class="petit" style="white-space:nowrap">${dt ? `du ${fmt(dt.debut)}<br>au ${fmt(dt.fin)}` : '<span class="doux">non fixé</span>'}</td>
+          <td class="petit">${ent ? `<b>${esc(ent.nom)}</b><br>${esc(ent.adresse)}` : '<span class="doux">pas encore d’entreprise</span>'}</td>
+          <td><b>${esc(nomEleve(e))}</b></td>
+          <td class="petit">${vs.length ? vs.map(v => `<button type="button" class="lien" data-a="agOuvrir" data-id="${v.id}">${v.statut === 'faite' ? '✅' : v.mode === 'visio' ? '💻' : '🚗'} ${fmt(v.date)} ${esc(v.heure)}</button>`).join('') : '<span class="badge" style="background:#b45309">à planifier</span>'}</td>
+          <td><button type="button" class="btn mini sec" data-a="agNouvelle" data-eleve="${e.id}" data-date="${dt && dt.debut > today() ? dt.debut : ''}">Planifier</button></td></tr>`).join('')}</table></div></details>`;
+    }).join('')}</section>`;
 }
+// Le clic sur le titre replie / déplie (comportement normal de <details>) : on retient l'état pour la prochaine fois.
+A.visRepli = el => {
+  const id = el.dataset.cl, ouvert = el.parentElement.open, l = classesRepliees().filter(x => x !== id);
+  if (ouvert) l.push(id);   // il était ouvert : il va se replier
+  memoriserRepli(l);
+};
+A.visToutes = el => {
+  const ouvrir = el.dataset.o === '1';
+  memoriserRepli(ouvrir ? [] : [...document.querySelectorAll('.vis-classe > summary')].map(s => s.dataset.cl));
+  document.querySelectorAll('.vis-classe').forEach(d => { d.open = ouvrir; });
+};
 
 /* ---------- Fiche d'une visite ---------- */
 function trouverVisite(id) { for (const e of S.eleves) { const v = (e.d.prof.visites || []).find(x => x.id === id); if (v) return { e, v }; } return null; }

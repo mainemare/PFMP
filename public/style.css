@@ -519,3 +519,9 @@ fieldset { border: 1px solid var(--trait); border-radius: 10px; }
 .stats.mini .stat:disabled { opacity: .35; cursor: default; }
 .stats.mini .stat b { font-size: 1.2rem; } .stats.mini .stat span { font-size: .7rem; }
 @media (max-width: 700px) { .stats.mini { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+/* ---------- Visites : élèves par classe, repliables ---------- */
+details.vis-classe { border: 1px solid var(--trait); border-left: 6px solid var(--cc); border-radius: 12px; margin: 10px 0; background: #fff; }
+details.vis-classe > summary { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; padding: 10px 14px; cursor: pointer; background: #f8fafc; border-radius: 12px; }
+details.vis-classe[open] > summary { border-bottom: 1px solid var(--trait); border-radius: 12px 12px 0 0; }
+details.vis-classe > summary b { font-size: 1.05rem; }
+details.vis-classe > .table-scroll { padding: 4px 10px 10px; }
