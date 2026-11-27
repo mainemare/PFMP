@@ -67,7 +67,10 @@ const CHAMPS = {
 const referentsDe = cl => !cl ? [] : cl.referentIds && cl.referentIds.length ? cl.referentIds : cl.referentId ? [cl.referentId] : [];
 const nomsReferents = cl => referentsDe(cl).map(id => { const p = (S.profs || []).find(x => x.id === id); return p ? nomComplet(p) : ''; }).filter(Boolean).join(', ');
 // Un professeur ne voit que les classes dont il est référent (et celles sans référent) ; le DDFPT voit tout.
-const classesVisibles = () => S.user && S.user.role === 'prof' ? S.classes.filter(c => { const r = referentsDe(c); return !r.length || r.includes(S.user.id); }) : S.classes;
+// Classes dont le professeur est référent (ou sans référent) : lui seul peut les modifier.
+const classesReferent = () => S.user && S.user.role === 'prof' ? S.classes.filter(c => { const r = referentsDe(c); return !r.length || r.includes(S.user.id); }) : S.classes;
+// Classes affichées : en plus, celles où un élève lui est confié pour la visite de stage.
+const classesVisibles = () => S.user && S.user.role === 'prof' ? S.classes.filter(c => classesReferent().includes(c) || Object.values(c.visiteurs || {}).includes(S.user.id)) : S.classes;
 const TITRES = { cv: 'CV', lettre: 'Lettre de motivation', memento: 'Memento d’appel', attestation: 'Attestation de stage' };
 
 /* ---------- Serveur ---------- */

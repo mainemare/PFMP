@@ -292,10 +292,14 @@ function voitClasse(user, classeId, classes) {
   const cl = (classes || lesClasses()).find(c => c.id === classeId), r = referentsDe(cl);
   return !cl || !r.length || r.indexOf(user.id) >= 0;
 }
+// Le professeur charge de la visite (classe.visiteurs[eleveId], attribue par un referent ou le DDFPT) voit aussi cet eleve.
 function voitEleve(user, eleveId, classes) {
   if (user.role === 'eleve') return user.id === eleveId;
-  const p = JSON.parse(getDoc('eleve/' + eleveId + '/profil')) || {};
-  return voitClasse(user, p.classeId || (comptes().find(u => u.id === eleveId) || {}).classeId, classes);
+  const p = JSON.parse(getDoc('eleve/' + eleveId + '/profil')) || {}, cls = classes || lesClasses();
+  const cid = p.classeId || (comptes().find(u => u.id === eleveId) || {}).classeId;
+  if (voitClasse(user, cid, cls)) return true;
+  const cl = cls.find(c => c.id === cid);
+  return user.role === 'prof' && !!(cl && cl.visiteurs && cl.visiteurs[eleveId] === user.id);
 }
 // Qui peut agir sur une convention, pour quel role.
 function peutAgir(m, user, role, code) {

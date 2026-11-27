@@ -293,7 +293,7 @@ function vueClasses() {
       <div class="ligne"><input id="moi_email" type="email" value="${esc(S.user.email || '')}" placeholder="prenom.nom@ac-normandie.fr" aria-label="Votre adresse e-mail">
         <button class="btn" data-a="sauverEmail">Enregistrer</button></div>
       ${S.user.email ? '' : '<p class="petit" style="color:#b45309;margin-top:6px">⚠️ Sans adresse, vos élèves ne pourront pas vous envoyer leur protocole : ils devront vous le remettre en main propre ou via l’ENT.</p>'}</div>
-    <button class="btn" data-a="nouvelleClasse">➕ Nouvelle classe</button></section>${classesVisibles().map(carteClasse).join('')}`;
+    <button class="btn" data-a="nouvelleClasse">➕ Nouvelle classe</button></section>${classesReferent().map(carteClasse).join('')}`;
 }
 function carteClasse(cl) {
   const els = S.eleves.filter(e => e.d.profil.classeId === cl.id);

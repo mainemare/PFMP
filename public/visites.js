@@ -31,8 +31,11 @@ function toutesVisites() {
 const mesVisites = () => toutesVisites().filter(x => x.v.profId === S.user.id);
 function mesEleves() {
   const mes = S.classes.filter(c => referentsDe(c).includes(S.user.id)).map(c => c.id);
-  return S.eleves.filter(e => mes.includes(e.d.profil.classeId) || (e.d.prof.visites || []).some(v => v.profId === S.user.id));
+  return S.eleves.filter(e => mes.includes(e.d.profil.classeId) || visiteurDe(e) === S.user.id || (e.d.prof.visites || []).some(v => v.profId === S.user.id));
 }
+// Professeur chargé de la visite de stage d'un élève (attribué par un référent de la classe ou le DDFPT).
+const visiteurDe = e => { const cl = classeDe(e.d); return (cl && cl.visiteurs && cl.visiteurs[e.id]) || ''; };
+const peutAttribuer = e => S.user.role === 'ddfpt' || referentsDe(classeDe(e.d)).includes(S.user.id);
 // Entreprise du stage : convention signée, sinon protocole, sinon rendez-vous.
 function entrepriseStage(d) {
   for (const s of ['convention', 'protocole', 'rdv']) {
@@ -111,8 +114,9 @@ const cleRepliVis = () => 'stages_visRepli_' + S.user.id;
 function classesRepliees() { try { return JSON.parse(localStorage.getItem(cleRepliVis()) || '[]'); } catch { return []; } }
 function memoriserRepli(l) { try { localStorage.setItem(cleRepliVis(), JSON.stringify(l)); } catch { /* stockage indisponible */ } }
 function elevesASuivre() {
-  const l = mesEleves();
-  if (!l.length) return `<section class="carte"><h2>👥 Mes élèves en stage</h2><p class="doux">Vous n’êtes professeur référent d’aucune classe : choisissez l’élève dans « Nouvelle visite ».</p></section>`;
+  const tous = S.user.role === 'ddfpt' ? S.eleves : mesEleves(), l = S.visMoi ? tous.filter(e => visiteurDe(e) === S.user.id) : tous;
+  const filtreMoi = tous.some(e => visiteurDe(e)) ? `<label class="petit" style="display:flex;gap:6px;align-items:center;margin:0"><input type="checkbox" data-c="visMoi" ${S.visMoi ? 'checked' : ''} style="width:auto">Seulement les élèves qui me sont attribués</label>` : '';
+  if (!l.length) return `<section class="carte"><h2>👥 Mes élèves en stage</h2>${filtreMoi}<p class="doux">${S.visMoi ? 'Aucun élève ne vous est attribué pour la visite.' : 'Vous n’êtes professeur référent d’aucune classe et aucun élève ne vous est attribué : choisissez l’élève dans « Nouvelle visite ».'}</p></section>`;
   const infos = l.map(e => {
     const dt = datesEleve(e.d), vs = (e.d.prof.visites || []).filter(v => v.profId === S.user.id && v.statut !== 'annulee').sort((a, b) => (a.date + a.heure).localeCompare(b.date + b.heure));
     const prochaine = vs.find(v => v.statut === 'prevue' && v.date >= today()) || vs[vs.length - 1];
@@ -125,16 +129,17 @@ function elevesASuivre() {
   const replies = classesRepliees();
   return `<section class="carte"><div class="ag-tete"><h2>👥 Mes élèves en stage (${l.length})</h2><span style="flex:1"></span>
       ${groupes.length > 1 ? '<button type="button" class="btn mini sec" data-a="visToutes" data-o="1">Tout déplier</button><button type="button" class="btn mini sec" data-a="visToutes" data-o="0">Tout replier</button>' : ''}</div>
-    <p class="petit doux">Par classe, dans l’ordre chronologique (date de la visite, sinon début du stage). Cliquez sur le nom d’une classe pour réduire ou afficher son détail.</p>
+    <p class="petit doux">Par classe, dans l’ordre chronologique (date de la visite, sinon début du stage). Cliquez sur le nom d’une classe pour réduire ou afficher son détail. Le professeur référent (ou le DDFPT) attribue chaque élève au professeur qui fera la visite : celui-ci le retrouve alors dans sa page « Visites ».</p>${filtreMoi}
     ${groupes.map(({ c, l: g }) => {
-      const aPlanifier = g.filter(x => !x.vs.length).length, faites = g.filter(x => x.vs.some(v => v.statut === 'faite')).length, p = c.id ? periodeCourante(c) : null;
+      const sansVisiteur = g.filter(x => !visiteurDe(x.e)).length, aPlanifier = g.filter(x => !x.vs.length).length, faites = g.filter(x => x.vs.some(v => v.statut === 'faite')).length, p = c.id ? periodeCourante(c) : null;
       return `<details class="vis-classe" style="--cc:${esc(c.couleur || '#94a3b8')}" ${replies.includes(c.id || '_') ? '' : 'open'}>
         <summary data-a="visRepli" data-cl="${esc(c.id || '_')}"><b>${esc(c.nom)}</b><span class="petit">${g.length} élève(s)${p ? ` · ${esc(p.label || 'Stage')} : ${fmt(p.debut)} → ${fmt(p.fin)}` : ''}</span>
-          ${aPlanifier ? `<span class="badge" style="background:#b45309">${aPlanifier} à planifier</span>` : ''}${faites ? `<span class="badge" style="background:#15803d">${faites} faite(s)</span>` : ''}</summary>
-        <div class="table-scroll"><table><tr><th>Date</th><th>Entreprise</th><th>Élève</th><th>Visite</th><th></th></tr>
+          ${sansVisiteur ? `<span class="badge" style="background:#7c3aed">${sansVisiteur} sans professeur attribué</span>` : ''}${aPlanifier ? `<span class="badge" style="background:#b45309">${aPlanifier} à planifier</span>` : ''}${faites ? `<span class="badge" style="background:#15803d">${faites} faite(s)</span>` : ''}</summary>
+        <div class="table-scroll"><table><tr><th>Date</th><th>Entreprise</th><th>Élève</th><th>Visite par</th><th>Visite</th><th></th></tr>
         ${g.map(({ e, dt, vs, ent }) => `<tr><td class="petit" style="white-space:nowrap">${dt ? `du ${fmt(dt.debut)}<br>au ${fmt(dt.fin)}` : '<span class="doux">non fixé</span>'}</td>
           <td class="petit">${ent ? `<b>${esc(ent.nom)}</b><br>${esc(ent.adresse)}` : '<span class="doux">pas encore d’entreprise</span>'}</td>
           <td><b>${esc(nomEleve(e))}</b></td>
+          <td class="petit">${choixVisiteur(e)}</td>
           <td class="petit">${vs.length ? vs.map(v => `<button type="button" class="lien" data-a="agOuvrir" data-id="${v.id}">${v.statut === 'faite' ? '✅' : v.mode === 'visio' ? '💻' : '🚗'} ${fmt(v.date)} ${esc(v.heure)}</button>`).join('') : '<span class="badge" style="background:#b45309">à planifier</span>'}</td>
           <td><button type="button" class="btn mini sec" data-a="agNouvelle" data-eleve="${e.id}" data-date="${dt && dt.debut > today() ? dt.debut : ''}">Planifier</button></td></tr>`).join('')}</table></div></details>`;
     }).join('')}</section>`;
@@ -526,3 +531,21 @@ async function pdfFrais(rows) {
   o.doc.setTitle(`Etat de frais - ${p.nom} ${p.prenom}`);
   return o.doc.save();
 }
+
+/* ---------- Attribution de la visite à un professeur ---------- */
+function choixVisiteur(e) {
+  const id = visiteurDe(e);
+  if (!peutAttribuer(e)) return id ? `<b>${esc(nomProf(id) || 'Professeur')}</b>${id === S.user.id ? ' <span class="badge" style="background:#2563eb">vous</span>' : ''}` : '<span class="doux">non attribué</span>';
+  return `<select data-c="visiteur" data-id="${e.id}" aria-label="Professeur qui fait la visite de ${esc(nomEleve(e))}" style="min-width:140px">
+    <option value="">— Non attribué —</option>${[...S.profs].sort((a, b) => nomComplet(a).localeCompare(nomComplet(b), 'fr')).map(p => `<option value="${p.id}" ${p.id === id ? 'selected' : ''}>${esc(nomComplet(p))}${p.id === S.user.id ? ' (vous)' : ''}</option>`).join('')}</select>`;
+}
+C.visiteur = async el => {
+  const e = S.eleves.find(x => x.id === el.dataset.id); if (!e) return;
+  const cid = e.d.profil.classeId, pid = el.value;
+  await mutCommun('classes', l => {
+    const c = l.find(x => x.id === cid); if (!c) throw new Error('Classe introuvable : rechargez la page.');
+    c.visiteurs = c.visiteurs || {}; if (pid) c.visiteurs[e.id] = pid; else delete c.visiteurs[e.id];
+  });
+  render(); toast(pid ? `Visite de ${nomEleve(e)} attribuée à ${pid === S.user.id ? 'vous' : nomProf(pid)}` : 'Attribution retirée');
+};
+C.visMoi = el => { S.visMoi = el.checked; render(); };

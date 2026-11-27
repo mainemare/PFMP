@@ -176,7 +176,7 @@ async function traiter(req, res) {
     if (user.role === 'ddfpt') return true;
     if (user.role !== 'prof') return user.id === id;
     const p = JSON.parse(getDoc(`eleve/${id}/profil`)) || {}, cl = cls.find(c => c.id === (p.classeId || (users.find(u => u.id === id) || {}).classeId)), r = referentsDe(cl);
-    return !cl || !r.length || r.includes(user.id);
+    return !cl || !r.length || r.includes(user.id) || !!(cl.visiteurs && cl.visiteurs[id] === user.id);
   };
 
   // Eleve : entreprise trouvee par lui-meme, proposee pour la base (validation par un prof ou le DDFPT).

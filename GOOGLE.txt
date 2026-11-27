@@ -335,3 +335,11 @@ Limites
   - Le lien pointe vers https://mainemare.github.io/PFMP/ ; si le site change d'adresse, ajoutez la propriete du script
     URL_SITE (ex. https://autre-adresse/PFMP/). Elle n'est jamais prise dans la demande du navigateur (protection anti-hameconnage).
   Mise en place : mettez a jour Code.gs puis Deployer > Gerer les deploiements > (crayon) > Nouvelle version.
+
+23. ATTRIBUTION DES VISITES DE STAGE
+  - Page « Visites », tableau « Mes eleves en stage » : colonne « Visite par ». Le professeur referent de la classe (ou le DDFPT,
+    qui voit tous les eleves) choisit le professeur qui fera la visite de chaque eleve.
+  - Le professeur attribue retrouve l'eleve dans sa page « Visites » (et dans son tableau de bord) et peut planifier la visite,
+    meme s'il n'est pas referent de la classe. Il n'a acces qu'aux eleves qui lui sont attribues ; il ne peut pas modifier la classe.
+  - L'attribution est rangee dans la classe (« Classes et dates ») : elle ne contient aucune donnee personnelle supplementaire.
+  Mise en place : mettez a jour Code.gs puis Deployer > Gerer les deploiements > (crayon) > Nouvelle version.
