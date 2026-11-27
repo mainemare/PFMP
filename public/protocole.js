@@ -93,7 +93,7 @@ function vueProtocole() {
     <button class="btn" data-a="protoApercu">👁️ Aperçu et impression</button>
     <button class="btn sec" data-a="protoTelecharger">⬇️ Télécharger le PDF</button>
     <button class="btn sec" data-a="protoEnvoyer">✉️ Envoyer pour validation à mon professeur référent${referent ? ` (${esc(nomComplet(referent))})` : ''}</button></div>
-    <p class="doux petit" style="margin-top:8px">Le PDF est fabriqué sur ton appareil. L’envoi transmet le PDF par e-mail à ton professeur référent, sans le garder dans l’application.</p></section>`;
+    <p class="doux petit" style="margin-top:8px">Le PDF est fabriqué sur ton appareil. L’envoi transmet le PDF par e-mail à ton professeur référent, sans le garder dans l’application.</p></section>${blocPronoteEleve(liste.find(x => x.id === P.demandeId))}`;
 }
 C.protoDemande = el => { if (PROTO) lireFormulaire(); const eleve = PROTO && PROTO.eleve; PROTO = null; initProtocole(el.value || null); if (!el.value) { PROTO.demandeId = ''; for (const [k] of CHAMPS_ENTREPRISE) PROTO.ent[k] = ''; } if (eleve) PROTO.eleve = eleve; render(); };
 A.protocolePour = el => { if (PROTO) lireFormulaire(); const eleve = PROTO && PROTO.eleve; PROTO = null; initProtocole(el.dataset.id); if (eleve) PROTO.eleve = eleve; S.vue = 'protocole'; render(); window.scrollTo(0, 0); };
@@ -329,3 +329,31 @@ async function verifierLienTuteur(silencieux) {
 }
 A.protoLienVerifier = () => verifierLienTuteur(false);
 setInterval(() => { if (document.getElementById('protoSigAttente') && !document.hidden) verifierLienTuteur(true).catch(() => {}); }, 20000);
+
+/* ---------- Étape finale : convention éditée et signée sur Pronote ----------
+ * Le protocole validé sert à éditer la convention sur Pronote. L'élève indique quand elle est signée ;
+ * le professeur confirme : la demande passe alors à « Convention signée » (niveau 5), ce qui termine le parcours de recherche. */
+function etapesPronote(dem, valide) {
+  const pr = (dem && dem.pronote) || {}, signee = !!dem && dem.statut === 'convention', ok = !!dem && (signee || (valide != null ? valide : protocoleValide(dem)));
+  const etape = (fait, t, d) => `<li class="${fait ? 'fait' : ''}"><span>${fait ? '✅' : '⬜'}</span><div>${t}${d ? `<br><span class="petit doux">${d}</span>` : ''}</div></li>`;
+  return `<ol class="etapes-pronote">${etape(ok, 'Protocole d’accord validé par le professeur référent')}
+    ${etape(!!pr.editeeLe || signee, 'Convention éditée sur Pronote', pr.editeeLe ? `le ${fmt(pr.editeeLe)}${pr.editeePar ? ` par ${esc(pr.editeePar)}` : ''}` : '')}
+    ${etape(signee, 'Convention signée : élève (et représentant légal), entreprise, chef d’établissement', pr.confirmeLe ? `confirmée par ${esc(pr.confirmePar)} le ${fmt(pr.confirmeLe)}` : pr.declareLe ? `signalée par l’élève le ${fmt(pr.declareLe)}, en attente de confirmation` : '')}</ol>`;
+}
+function blocPronoteEleve(dem) {
+  const pr = (dem && dem.pronote) || {}, signee = !!dem && dem.statut === 'convention', ok = !!dem && (protocoleValide(dem) || signee);
+  return `<section class="carte pronote"><h2>🏁 Étape finale : la convention de stage sur Pronote</h2>
+    <p>Une fois ton protocole validé, ta <b>convention de stage est éditée sur Pronote</b>. Quand elle est signée par tout le monde, ta recherche de stage est terminée.</p>
+    ${etapesPronote(dem)}
+    ${!dem ? '<p class="doux">Choisis d’abord l’entreprise en haut de la page.</p>'
+      : signee ? '<div class="alerte ok">🎉 Ta convention est signée : ton parcours de recherche de stage est terminé ! Prépare maintenant ton stage (journal de bord, portfolio).</div>'
+      : !ok ? '<p class="doux petit">Cette étape s’ouvre quand ton professeur référent a validé ton protocole d’accord.</p>'
+      : pr.declareLe ? `<p>⏳ Tu as indiqué le ${fmt(pr.declareLe)} que ta convention est signée : ton professeur va le confirmer.</p>`
+      : `<p class="petit">Ta convention est signée sur Pronote (par toi, ton représentant légal, l’entreprise et le lycée) ? Préviens ton professeur :</p>
+        <div class="actions"><button class="btn" data-a="pronoteDeclarer" data-id="${dem.id}">✅ Ma convention est signée sur Pronote</button></div>`}</section>`;
+}
+A.pronoteDeclarer = async el => {
+  const x = S.el.demandes.liste.find(d => d.id === el.dataset.id); if (!x) return;
+  x.pronote = Object.assign(x.pronote || {}, { declareLe: maintenant() }); x.majLe = maintenant();
+  await sauver('demandes'); journal(`Convention signée sur Pronote signalée au professeur (${x.nom})`); render(); toast('Ton professeur est prévenu');
+};

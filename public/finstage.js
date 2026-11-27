@@ -4,7 +4,7 @@
  * par l'entreprise, puis dépôt de l'attestation signée : photo ou PDF, rangée dans le dossier privé du Drive). */
 const PHASES = [
   { id: 'avant', n: 1, titre: 'Avant le stage', sous: 'Trouver mon stage', ic: '🔎', c: '#2563eb',
-    vues: [['cv', '📄 CV'], ['lettre', '✉️ Lettre'], ['profil', '👤 Mon profil'], ['memento', '📝 Memento'], ['entreprises', '🏢 Entreprises'], ['offres', '📢 Offres de stage'], ['suivi', '📞 Mes appels'], ['protocole', '🤝 Protocole']] },
+    vues: [['cv', '📄 CV'], ['lettre', '✉️ Lettre'], ['profil', '👤 Mon profil'], ['memento', '📝 Memento'], ['entreprises', '🏢 Entreprises'], ['offres', '📢 Offres de stage'], ['suivi', '📞 Mes appels'], ['protocole', '🤝 Protocole et convention']] },
   { id: 'pendant', n: 2, titre: 'Pendant le stage', sous: 'Garder une trace', ic: '🛠️', c: '#0d9488',
     vues: [['bord', '📓 Journal de bord'], ['portfolio', '🗂️ Portfolio']] },
   { id: 'fin', n: 3, titre: 'Fin du stage', sous: 'Évaluation et attestation', ic: '🏁', c: '#7c3aed',

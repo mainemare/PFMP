@@ -76,6 +76,7 @@ function carteEleve(e) {
       ${d.prof.urgence ? `<span class="badge" style="background:#0d9488">Pris en main</span>` : ''}
       ${relire ? `<span class="badge" style="background:#7c3aed">${relire} doc. à relire</span>` : ''}
       ${d.demandes.liste.some(x => protocoleAValider(e, x)) ? '<span class="badge" style="background:#7c3aed">🤝 protocole à valider</span>' : ''}
+      ${d.demandes.liste.some(x => x.pronote && x.pronote.declareLe && x.statut !== 'convention') ? '<span class="badge" style="background:#0369a1">🏁 convention Pronote à confirmer</span>' : ''}
       ${typeof badgeConvention === 'function' ? badgeConvention(e) : ''}
       ${dt && dt.derog ? '<span class="badge clair">Dates dérogatoires</span>' : ''}
       ${niveauForceDe(d) != null ? '<span class="badge clair">Niveau fixé par le prof</span>' : ''}</div></article>`;
@@ -143,7 +144,7 @@ A.supEleve = async () => {
   await api('POST', '/api/admin/supprimer', { id: e.id }); S.dossier = null; await chargerEleves(); render();
 };
 const dosSuivi = e => {
-  const d = e.d, ps = periodesEleve(d), carte = x => blocProtocoleProf(e, x) + blocConventionProf(e, x) + carteDemande(x, true);
+  const d = e.d, ps = periodesEleve(d), carte = x => blocProtocoleProf(e, x) + blocPronoteProf(e, x) + blocConventionProf(e, x) + carteDemande(x, true);
   if (!d.demandes.liste.length) return '<p class="doux">L’élève n’a encore sélectionné aucune entreprise.</p>';
   if (ps.length < 2) return [...d.demandes.liste].reverse().map(carte).join('');
   // Plusieurs périodes : les demandes sont séparées, période par période (la période en cours d'abord).
@@ -682,4 +683,40 @@ A.pasDoublonEnt = async el => {
   for (const a of l) for (const b of l) if (a.id < b.id) s.add(paireEnt(a.id, b.id));
   doc.nonDoublons = [...s]; await putDoc('commun/entreprises', doc); S.nonDoublonsEnt = doc.nonDoublons; S.entreprises = doc.entreprises;
   A.doublonsEnt(); toast('Noté : ces fiches ne seront plus proposées comme doublons');
+};
+
+/* ---------- Convention sur Pronote : édition et confirmation de la signature ---------- */
+function blocPronoteProf(e, x) {
+  const v = validationDe(e.d, x.id), signee = x.statut === 'convention';
+  if (!(v && v.avis === 'favorable') && !signee && !(x.pronote && x.pronote.declareLe)) return '';
+  const pr = x.pronote || {}, coul = signee ? '#15803d' : pr.declareLe ? '#0369a1' : '#64748b';
+  return `<div class="demande" style="--c:${coul}"><div class="tete"><b>🏁 Convention sur Pronote — ${esc(x.nom)}</b>
+      <span class="badge" style="background:${coul}">${signee ? 'Signée' : pr.declareLe ? 'Signée selon l’élève' : pr.editeeLe ? 'Éditée' : 'À éditer'}</span></div>
+    ${etapesPronote(x, !!(v && v.avis === 'favorable'))}
+    ${signee ? (estReferentDe(e) ? `<div class="actions"><button class="btn mini sec" data-a="pronoteAnnuler" data-id="${x.id}">Annuler la confirmation</button></div>` : '')
+      : `<div class="actions">${pr.editeeLe ? '' : `<button class="btn mini sec" data-a="pronoteEditee" data-id="${x.id}">📝 Convention éditée sur Pronote</button>`}
+        <button class="btn mini" data-a="pronoteConfirmer" data-id="${x.id}">✅ Confirmer : convention signée sur Pronote</button></div>`}</div>`;
+}
+async function majDemandeEleveProf(e, id, fn) {
+  const k = `eleve/${e.id}/demandes`, dem = Object.assign(DEF.demandes(), (await getDoc(k)) || {}), x = dem.liste.find(d => d.id === id);
+  if (!x) throw new Error('Demande introuvable : l’élève l’a peut-être retirée.');
+  fn(x); x.majLe = maintenant(); await putDoc(k, dem); e.d.demandes = dem;
+}
+A.pronoteEditee = async el => {
+  const e = eleveOuvert();
+  await majDemandeEleveProf(e, el.dataset.id, x => { x.pronote = Object.assign(x.pronote || {}, { editeeLe: maintenant(), editeePar: nomComplet(S.user) }); });
+  render(); toast('Noté : convention éditée sur Pronote (l’élève le voit)');
+};
+A.pronoteConfirmer = async el => {
+  const e = eleveOuvert();
+  if (!confirm('Confirmer que la convention est signée par toutes les parties sur Pronote ? La recherche de stage de l’élève sera terminée (niveau 5).')) return;
+  await majDemandeEleveProf(e, el.dataset.id, x => { x.pronote = Object.assign(x.pronote || {}, { confirmeLe: maintenant(), confirmePar: nomComplet(S.user) }); if (!x.pronote.editeeLe) x.pronote.editeeLe = x.pronote.confirmeLe;
+    x.statut = 'convention'; x.conventionSigneeLe = maintenant(); });
+  render(); toast('✅ Convention signée : parcours de recherche terminé');
+};
+A.pronoteAnnuler = async el => {
+  const e = eleveOuvert();
+  if (!confirm('Annuler la confirmation de la convention ? La demande repassera à « Accord – protocole signé ».')) return;
+  await majDemandeEleveProf(e, el.dataset.id, x => { if (x.pronote) { delete x.pronote.confirmeLe; delete x.pronote.confirmePar; delete x.pronote.declareLe; } x.statut = 'protocole'; delete x.conventionSigneeLe; });
+  render(); toast('Confirmation annulée');
 };

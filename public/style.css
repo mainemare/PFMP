@@ -448,6 +448,13 @@ fieldset.c_refs label { display: inline-flex; align-items: center; gap: 6px; mar
 .ev-ap label { display: flex; gap: 6px; align-items: center; margin: 3px 0; font-weight: 400; }
 .ev-total { position: sticky; bottom: 0; background: #eef2ff; border: 1px solid #c7d2fe; border-radius: 10px; padding: 10px 12px; margin-top: 10px; font-size: 1.02rem; z-index: 2; }
 
+/* ---------- Convention sur Pronote ---------- */
+.carte.pronote { border-top-color: #15803d; }
+.carte.pronote > h2:first-child { background: #ecfdf3; color: #14532d; border-bottom-color: #bbf7d0; }
+.etapes-pronote { list-style: none; padding: 0; margin: 10px 0 14px; display: grid; gap: 8px; }
+.etapes-pronote li { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--trait); border-radius: 10px; background: #fff; }
+.etapes-pronote li.fait { border-color: #86efac; background: #f0fdf4; }
+.etapes-pronote li > span { flex: none; font-size: 1.1rem; line-height: 1.3; }
 /* ---------- Doublons d'entreprises ---------- */
 .liste-doublons { display: grid; gap: 8px; margin: 10px 0; }
 .doublon-ligne { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid #e5e7eb; border-radius: 10px; }
