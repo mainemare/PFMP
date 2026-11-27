@@ -457,3 +457,44 @@ fieldset.c_refs label { display: inline-flex; align-items: center; gap: 6px; mar
 .groupe-doublon { border: 1px solid #e5e7eb; border-radius: 12px; padding: 10px; margin: 10px 0; display: grid; gap: 6px; }
 .groupe-doublon .doublon-ligne { justify-content: flex-start; cursor: pointer; font-weight: 400; margin: 0; }
 .groupe-doublon .doublon-ligne input { flex: none; width: auto; margin: 4px 6px 0 0; align-self: flex-start; }
+
+/* =====================================================================
+   Structure visuelle renforcée : cartes encadrées, titres en bandeau,
+   sous-titres repérés, tableaux rayés, couleur d'accent selon l'étape
+   ===================================================================== */
+:root { --accent: var(--prim); --fond: #eceff6; --trait: #d6dcea; }
+main.ph-avant { --accent: #2563eb; } main.ph-pendant { --accent: #0d9488; } main.ph-fin { --accent: #7c3aed; } main.ph-accueil, main.console { --accent: #3b4cca; }
+.grille { gap: 18px; }
+/* Cartes : cadre plus net, liseré de couleur en haut, ombre douce */
+.carte { border: 1px solid var(--trait); border-top: 4px solid var(--accent); box-shadow: 0 2px 10px rgba(20, 30, 60, .07); margin-bottom: 20px; }
+/* Titre principal de la carte : bandeau teinté sur toute la largeur */
+.carte > h2:first-child { margin: -18px -20px 16px; padding: 12px 20px; background: color-mix(in srgb, var(--accent) 9%, #fff); border-bottom: 1px solid color-mix(in srgb, var(--accent) 22%, #fff); border-radius: 10px 10px 0 0; color: color-mix(in srgb, var(--accent) 70%, #111827); }
+/* Sous-titres : barre de couleur à gauche et espace au-dessus */
+.carte h3, .fenetre h3 { margin-top: 20px; padding: 3px 0 3px 10px; border-left: 4px solid var(--accent); }
+.carte > h2:first-child + h3, .carte > h3:first-child, .att-prof > h3:first-child, .ev-comp-bloc h3 { margin-top: 0; }
+/* Carte dans une carte (lieux de résidence, blocs du portfolio…) : fond légèrement grisé */
+.carte .carte { background: #f8f9fd; border-top-width: 3px; box-shadow: none; }
+.carte .carte > h2:first-child, .carte .carte > h3:first-child { margin-top: 0; }
+/* Tableaux : en-tête teinté, lignes alternées, cadre arrondi */
+.table-scroll { border: 1px solid var(--trait); border-radius: 10px; background: #fff; }
+.table-scroll table { margin: 0; }
+th { background: color-mix(in srgb, var(--accent) 7%, #f6f7fb); }
+tbody tr:nth-child(even) td, table tr:nth-child(even) > td { background: #fafbfe; }
+.table-scroll table tr:last-child > td { border-bottom: 0; }
+/* Groupes de champs et blocs repliables */
+fieldset { border: 1px solid var(--trait); border-radius: 10px; }
+.carte details:not(.aide) { border: 1px solid var(--trait); border-radius: 10px; padding: 8px 12px; margin: 10px 0; background: #fbfcff; }
+.carte details:not(.aide) > summary { cursor: pointer; font-weight: 600; color: color-mix(in srgb, var(--accent) 75%, #111827); }
+.carte details[open]:not(.aide) > summary { margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px dashed var(--trait); }
+/* Éléments de liste : séparation plus visible */
+.demande { box-shadow: 0 1px 4px rgba(20, 30, 60, .06); margin-bottom: 14px; }
+.demande .tete { padding-bottom: 6px; border-bottom: 1px solid #eef1f7; }
+.att-prof, .periode-ligne, .doublon-ligne, .groupe-doublon { background: #fff; box-shadow: 0 1px 4px rgba(20, 30, 60, .05); }
+.att-prof { border-left: 5px solid var(--accent); }
+.actions { padding-top: 4px; }
+/* Fenêtres (dossier élève, formulaires) : contenu mieux découpé */
+.fenetre .onglets { background: #f3f5fb; border-radius: 10px; padding: 4px; }
+.fenetre > h2, .fenetre h2:first-of-type { padding-bottom: 8px; border-bottom: 2px solid color-mix(in srgb, var(--accent) 25%, #fff); }
+/* Alertes : légère ombre pour les détacher du fond */
+.alerte { box-shadow: 0 1px 4px rgba(20, 30, 60, .06); }
+@media (max-width: 640px) { .carte > h2:first-child { margin: -14px -14px 14px; padding: 10px 14px; } }

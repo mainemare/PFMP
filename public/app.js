@@ -237,7 +237,7 @@ function render() {
   if (carte) { carte.remove(); carte = null; }
   if (typeof fermerCarteProf === 'function') fermerCarteProf();
   const ph = !prof && S.vue !== 'fin' && PHASES.find(p => p.id === phaseDeVue(S.vue));
-  app.innerHTML = entete(prof) + `<main>${ph ? `<div class="bandeau-phase" style="--ph:${ph.c}"><span>${ph.n}</span><div><b>${ph.ic} ${ph.titre}</b><br>${ph.sous}</div></div>` : ''}${prof ? vueProf() : vueEleve()}</main>` + (prof && S.dossier ? vueDossier() : '');
+  app.innerHTML = entete(prof) + `<main class="${prof ? 'console' : 'ph-' + (S.vue === 'fin' ? 'fin' : phaseDeVue(S.vue) || 'accueil')}">${ph ? `<div class="bandeau-phase" style="--ph:${ph.c}"><span>${ph.n}</span><div><b>${ph.ic} ${ph.titre}</b><br>${ph.sous}</div></div>` : ''}${prof ? vueProf() : vueEleve()}</main>` + (prof && S.dossier ? vueDossier() : '');
   // Téléphone : le menu défile jusqu'à la rubrique ouverte (ou l'étape en cours depuis l'accueil).
   const nv = $('nav.nav-eleve'), cible = nv && (S.vue === 'accueil' ? nv.querySelector('.nav-groupe.ici') : nv.querySelector('.actif'));
   if (cible && nv.scrollWidth > nv.clientWidth) nv.scrollLeft = cible.offsetLeft - nv.offsetLeft - 10;
