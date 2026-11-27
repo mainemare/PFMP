@@ -30,7 +30,7 @@ function toutesVisites() {
 }
 const mesVisites = () => toutesVisites().filter(x => x.v.profId === S.user.id);
 function mesEleves() {
-  const mes = S.classes.filter(c => c.referentId === S.user.id).map(c => c.id);
+  const mes = S.classes.filter(c => referentsDe(c).includes(S.user.id)).map(c => c.id);
   return S.eleves.filter(e => mes.includes(e.d.profil.classeId) || (e.d.prof.visites || []).some(v => v.profId === S.user.id));
 }
 // Entreprise du stage : convention signée, sinon protocole, sinon rendez-vous.

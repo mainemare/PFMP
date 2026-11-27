@@ -284,3 +284,17 @@ Limites
     puis depot par l'eleve d'une photo ou d'un PDF (dossier prive du Drive). Le professeur et le DDFPT la verifient et la
     valident dans le dossier de l'eleve, onglet « Attestation ».
   Mise en place : mettez a jour Code.gs puis Deployer > Gerer les deploiements > (crayon) > Nouvelle version.
+
+19. PERIODES DE STAGE SEPAREES ET CLASSES RESERVEES A LEURS REFERENTS
+  - Plusieurs periodes par classe (PFMP 1, PFMP 2...) : chaque periode a sa propre recherche d'entreprises et son propre
+    niveau. L'eleve voit ses periodes sur l'accueil (« Mes periodes de stage ») et un onglet par periode dans « Mes appels » ;
+    les entreprises qu'il ajoute vont dans la periode en cours (ou dans une periode a venir s'il l'a ouverte).
+    Le professeur voit la recherche periode par periode dans le dossier de l'eleve (Synthese et Demandes).
+    Les anciennes demandes sont rangees automatiquement dans la periode en cours au moment ou elles ont ete creees.
+  - Une classe peut avoir plusieurs professeurs referents (cases a cocher dans « Classes et dates »).
+    Un professeur ne voit que les classes dont il est referent (et celles qui n'ont pas encore de referent), et seulement
+    leurs eleves ; le DDFPT voit tout. Le controle est fait par le serveur (Code.gs) : lecture des dossiers, CV, photos,
+    conventions, mots de passe. Un professeur ne peut pas modifier une classe dont d'autres sont referents.
+  - Le protocole d'accord envoye par un eleve part vers tous les referents de sa classe qui ont indique leur e-mail.
+  Mise en place : mettez a jour Code.gs puis Deployer > Gerer les deploiements > (crayon) > Nouvelle version.
+  Puis, dans « Classes et dates », verifiez les referents de chaque classe (ex. TP2 : cochez seulement ses referents).

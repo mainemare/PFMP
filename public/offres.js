@@ -118,7 +118,7 @@ function offresEleve(d) {
 function vueOffresEleve() {
   const d = S.el, niv = S.fo.niveau == null ? niveauClasse(S.classes.find(c => c.id === d.profil.classeId)) : S.fo.niveau;
   const l = offresEleve(d), secteurs = [...new Set(S.offres.filter(offreActive).map(o => o.secteur).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'fr'));
-  const pris = new Set(d.demandes.liste.map(x => x.offreId).filter(Boolean));
+  const pris = new Set(demandesP(d, periodeCible(d)).map(x => x.offreId).filter(Boolean));
   return `<section class="carte"><h2>📢 Offres de stage</h2>
     <p class="doux">Des entreprises proposent des stages aux élèves du lycée. Ajoute celles qui t’intéressent à tes appels, puis contacte-les rapidement : les places partent vite.</p>
     <p class="petit">🔎 À voir aussi : <a href="https://www.destination-metier.fr/" target="_blank" rel="noopener">Destination Métier</a> (agence de l’orientation et des métiers de Normandie) · <a href="https://labonnealternance.apprentissage.beta.gouv.fr/" target="_blank" rel="noopener">La bonne alternance</a> (apprentissage).</p>

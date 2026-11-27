@@ -45,7 +45,7 @@ function vueTableau() {
   <div class="stats">${NIV.map((v, n) => `<div class="stat" style="--c:${v.c}"><b>${par[n]}</b><span>${n} · ${v.l}${n === 2 && par[n] ? `<br>dont ${S.eleves.filter(e => tresActive(e.d)).length} très active(s)` : ''}</span></div>`).join('')}</div>
   <section class="carte filtres">
     <label>Rechercher un élève<input data-i="filtre" data-k="q" value="${esc(f.q)}" placeholder="Nom ou prénom"></label>
-    <label>Classe<select data-c="filtre" data-k="classe"><option value="">Toutes</option>${S.classes.map(c => `<option value="${c.id}" ${f.classe === c.id ? 'selected' : ''}>${esc(c.nom)}</option>`).join('')}</select></label>
+    <label>Classe<select data-c="filtre" data-k="classe"><option value="">Toutes</option>${classesVisibles().map(c => `<option value="${c.id}" ${f.classe === c.id ? 'selected' : ''}>${esc(c.nom)}</option>`).join('')}</select></label>
     <label>Niveau<select data-c="filtre" data-k="niveau"><option value="">Tous</option>${NIV.map((v, n) => `<option value="${n}" ${f.niveau === String(n) ? 'selected' : ''}>${n} · ${v.l}</option>`).join('')}</select></label>
     <label style="align-self:center"><input type="checkbox" data-c="filtre" data-k="urg" ${f.urg ? 'checked' : ''}>Urgences seulement</label>
   </section>
@@ -54,14 +54,14 @@ function vueTableau() {
 function listeClasses() {
   const f = S.f, q = f.q.trim().toLowerCase(), filtre = !!(q || f.niveau !== '' || f.urg);
   const vus = S.eleves.filter(e => (!q || nomEleve(e).toLowerCase().includes(q)) && (f.niveau === '' || niveau(e.d) === +f.niveau) && (!f.urg || enUrgence(e.d)));
-  const groupes = S.classes.filter(c => !f.classe || c.id === f.classe).map(c => ({ c, els: vus.filter(e => e.d.profil.classeId === c.id) }));
+  const groupes = classesVisibles().filter(c => !f.classe || c.id === f.classe).map(c => ({ c, els: vus.filter(e => e.d.profil.classeId === c.id) }));
   const orphelins = vus.filter(e => !classeDe(e.d));
   if (orphelins.length && !f.classe) groupes.push({ c: { nom: 'Sans classe', couleur: '#64748b', periodes: [] }, els: orphelins });
   const html = groupes.filter(g => g.els.length || !filtre).map(g => {
     const p = periodeCourante(g.c), j = p ? jours(p.debut) : null;
     return `<section class="classe" style="--cc:${esc(g.c.couleur)}"><header><h2>${esc(g.c.nom)}</h2><span>${g.els.length} élève(s)</span>
       ${p ? `<span>📅 ${esc(p.label || 'Stage')} : ${fmt(p.debut)} → ${fmt(p.fin)}${j > 0 ? ` · <b>J-${j}</b>` : ''}</span>` : '<span>Dates non fixées</span>'}
-      ${g.c.referentId && nomProf(g.c.referentId) ? `<span>Référent : ${esc(nomProf(g.c.referentId))}</span>` : ''}</header>
+      ${nomsReferents(g.c) ? `<span>Référent${referentsDe(g.c).length > 1 ? 's' : ''} : ${esc(nomsReferents(g.c))}</span>` : ''}</header>
       <div class="cartes">${g.els.length ? g.els.map(carteEleve).join('') : '<p class="doux">Aucun élève inscrit dans cette classe.</p>'}</div></section>`;
   }).join('');
   return html || `<section class="carte"><p>${S.classes.length ? 'Aucun élève ne correspond à ces critères.' : 'Commencez par créer vos classes et leurs dates de stage dans « Classes et dates ». Les élèves pourront ensuite s’inscrire.'}</p></section>`;
@@ -71,14 +71,14 @@ function carteEleve(e) {
   const relire = ['cv', 'lettre', 'memento'].filter(t => d[t].aRelire).length;
   return `<article class="eleve" style="--c:${NIV[n].c}" data-a="ouvrir" data-id="${e.id}" tabindex="0" role="button" aria-label="Ouvrir le dossier de ${esc(nomEleve(e))}">
     <h3>${esc(nomEleve(e))}</h3>${barre(n, true, d)}
-    <div class="infos">${d.demandes.liste.length} entreprise(s) suivie(s)<br>${dern ? `Dernière activité : ${fmt(dern.date)}` : 'Aucune activité'}</div>
+    <div class="infos">${demandesP(d).length} entreprise(s) suivie(s)${periodesEleve(d).length > 1 ? ` (${esc((periodesEleve(d).find(p => cleP(p) === periodeActive(d)) || {}).label || 'période en cours')})` : ''}<br>${dern ? `Dernière activité : ${fmt(dern.date)}` : 'Aucune activité'}</div>
     <div class="tags">${enUrgence(d) ? `<span class="badge urg">🚨 URGENCE${dt ? ` J${jours(dt.debut) > 0 ? '-' + jours(dt.debut) : ''}` : ''}</span>` : ''}
       ${d.prof.urgence ? `<span class="badge" style="background:#0d9488">Pris en main</span>` : ''}
       ${relire ? `<span class="badge" style="background:#7c3aed">${relire} doc. à relire</span>` : ''}
       ${d.demandes.liste.some(x => protocoleAValider(e, x)) ? '<span class="badge" style="background:#7c3aed">🤝 protocole à valider</span>' : ''}
       ${typeof badgeConvention === 'function' ? badgeConvention(e) : ''}
       ${dt && dt.derog ? '<span class="badge clair">Dates dérogatoires</span>' : ''}
-      ${d.prof.niveauForce != null ? '<span class="badge clair">Niveau fixé par le prof</span>' : ''}</div></article>`;
+      ${niveauForceDe(d) != null ? '<span class="badge clair">Niveau fixé par le prof</span>' : ''}</div></article>`;
 }
 function majListe() { const l = $('#liste'); if (l) l.innerHTML = listeClasses(); }
 C.filtre = el => { S.f[el.dataset.k] = el.type === 'checkbox' ? el.checked : el.value; majListe(); };
@@ -114,8 +114,8 @@ function dosSynthese(e) {
     ${enUrgence(d) ? `<div class="alerte urgent"><b>🚨 Plan d’urgence</b><br>${u ? `Pris en main par ${esc(u.par)} le ${fmtDT(u.date)}${u.note ? `<br>« ${esc(u.note)} »` : ''}` : 'Personne n’a encore pris ce dossier en main.'}
       <label style="margin-top:8px">Note<input id="u_note" value="${esc(u ? u.note : '')}" placeholder="Actions engagées…"></label><button class="btn mini" data-a="prendreEnMain">${u ? 'Mettre à jour' : 'Je prends ce dossier en main'}</button></div>` : ''}
   </div><div>
-    <h3>Niveau d’avancement</h3><label>Niveau affiché<select data-c="niveauForce"><option value="">Automatique (actuellement ${niveauAuto(d)})</option>
-      ${NIV.map((v, n) => `<option value="${n}" ${d.prof.niveauForce === n ? 'selected' : ''}>Fixer à ${n} · ${v.l}</option>`).join('')}</select></label>
+    ${blocPeriodesProf(e)}<h3>Niveau d’avancement${periodesEleve(d).length > 1 ? ' (période en cours)' : ''}</h3><label>Niveau affiché<select data-c="niveauForce"><option value="">Automatique (actuellement ${niveauAuto(d)})</option>
+      ${NIV.map((v, n) => `<option value="${n}" ${niveauForceDe(d) === n ? 'selected' : ''}>Fixer à ${n} · ${v.l}</option>`).join('')}</select></label>
     <h3>Dates de stage dérogatoires</h3><p class="doux petit">À utiliser à la marge : remplace les dates de la classe pour cet élève uniquement.</p>
     <div class="deux"><label>Début<input type="date" id="o_debut" value="${esc(o.debut || '')}"></label><label>Fin<input type="date" id="o_fin" value="${esc(o.fin || '')}"></label></div>
     <label>Motif<input id="o_motif" value="${esc(o.motif || '')}"></label>
@@ -124,7 +124,7 @@ function dosSynthese(e) {
     <div class="actions"><button class="btn mini danger" data-a="supEleve">Supprimer ce compte élève</button></div>
   </div></div>`;
 }
-C.niveauForce = async el => { await mutProf(S.dossier, p => { p.niveauForce = el.value === '' ? null : +el.value; }); render(); toast('Niveau mis à jour'); };
+C.niveauForce = async el => { const e = eleveOuvert(); await mutProf(S.dossier, p => { p.niveauForce = el.value === '' ? null : +el.value; p.niveauForceP = el.value === '' ? null : periodeActive(e.d); }); render(); toast('Niveau mis à jour'); };
 A.prendreEnMain = async () => { const note = val('u_note'); await mutProf(S.dossier, p => { p.urgence = { par: nomComplet(S.user), parId: S.user.id, date: maintenant(), note }; }); render(); toast('Dossier pris en main'); };
 function lireDerog(pd, pf, pm) {
   const d = { debut: val(pd), fin: val(pf), motif: val(pm) };
@@ -140,19 +140,35 @@ A.supEleve = async () => {
   if (!confirm(`Supprimer définitivement le compte et le dossier de ${nomEleve(e)} ?`)) return;
   await api('POST', '/api/admin/supprimer', { id: e.id }); S.dossier = null; await chargerEleves(); render();
 };
-const dosSuivi = e => e.d.demandes.liste.length ? [...e.d.demandes.liste].reverse().map(x => blocProtocoleProf(e, x) + blocConventionProf(e, x) + carteDemande(x, true)).join("") : '<p class="doux">L’élève n’a encore sélectionné aucune entreprise.</p>';
+const dosSuivi = e => {
+  const d = e.d, ps = periodesEleve(d), carte = x => blocProtocoleProf(e, x) + blocConventionProf(e, x) + carteDemande(x, true);
+  if (!d.demandes.liste.length) return '<p class="doux">L’élève n’a encore sélectionné aucune entreprise.</p>';
+  if (ps.length < 2) return [...d.demandes.liste].reverse().map(carte).join('');
+  // Plusieurs périodes : les demandes sont séparées, période par période (la période en cours d'abord).
+  const act = periodeActive(d), ordre = [...ps].sort((a, b) => (cleP(b) === act) - (cleP(a) === act) || b.debut.localeCompare(a.debut));
+  return ordre.map(p => { const k = cleP(p), l = demandesP(d, k);
+    return `<div class="titre-periode"><h3>📅 ${esc(p.label || 'Stage')} <span class="petit doux">${fmt(p.debut)} → ${fmt(p.fin)}</span>${k === act ? ' <span class="badge" style="background:#2563eb">en cours</span>' : ''}</h3>${barre(niveau(d, k), true, d, k)}</div>
+      ${l.length ? [...l].reverse().map(carte).join('') : '<p class="doux">Aucune entreprise pour cette période.</p>'}`; }).join('');
+};
+// Synthèse du dossier : avancement de la recherche pour chaque période.
+function blocPeriodesProf(e) {
+  const d = e.d, ps = periodesEleve(d), act = periodeActive(d);
+  if (ps.length < 2) return '';
+  return `<h3>Recherche par période</h3><div class="periodes-liste">${ps.map(p => { const k = cleP(p);
+    return `<div class="periode-ligne ${k === act ? 'ici' : ''}"><div><b>${esc(p.label || 'Stage')}</b>${k === act ? ' <span class="badge" style="background:#2563eb">en cours</span>' : ''}<br><span class="petit doux">${fmt(p.debut)} → ${fmt(p.fin)} · ${demandesP(d, k).length} entreprise(s), ${nbContactees(d, k)} contactée(s)</span></div>${barre(niveau(d, k), true, d, k)}</div>`; }).join('')}</div>`;
+}
 
 /* ---------- Validation du protocole d'accord (professeur référent) ---------- */
 const protocoleAValider = (e, x) => { const p = x.protocole, v = validationDe(e.d, x.id); return !!(p && p.soumisLe && (!v || p.soumisLe > v.date)); };
 const protocolesAValider = () => S.eleves.flatMap(e => e.d.demandes.liste.filter(x => protocoleAValider(e, x)).map(x => ({ e, x })));
-const estReferentDe = e => { const cl = classeDe(e.d); return !cl || !cl.referentId || cl.referentId === S.user.id; };
+const estReferentDe = e => { const r = referentsDe(classeDe(e.d)); return !r.length || r.includes(S.user.id); };
 function blocProtocoleProf(e, x) {
   const p = x.protocole; if (!p || !p.soumisLe) return '';
   const v = validationDe(e.d, x.id), attente = protocoleAValider(e, x), n = p.ent || {}, h = p.horaires || {};
   const li = (t, val) => val ? `<dt>${t}</dt><dd>${esc(val)}</dd>` : '';
   const horaires = JOURS.map(([j, l]) => { const m = [h[j + '_matin_de'], h[j + '_matin_a']], a = [h[j + '_apresmidi_de'], h[j + '_apresmidi_a']];
     const t = [m[0] && `${m[0]}–${m[1] || '?'}`, a[0] && `${a[0]}–${a[1] || '?'}`].filter(Boolean).join(' / '); return t ? `${l} ${t}` : ''; }).filter(Boolean).join(' · ');
-  const cl = classeDe(e.d), ref = cl && cl.referentId ? nomProf(cl.referentId) : '';
+  const cl = classeDe(e.d), ref = nomsReferents(cl);
   return `<div class="demande protocole-prof ${attente ? 'attente' : ''}" style="--c:${attente ? '#7c3aed' : v && v.avis === 'favorable' ? '#15803d' : '#b91c1c'}">
     <div class="tete"><b>🤝 Protocole d’accord — ${esc(n.entreprise || x.nom)}</b>
       <span class="badge" style="background:${attente ? '#7c3aed' : v.avis === 'favorable' ? '#15803d' : '#b91c1c'}">${attente ? 'À valider' : v.avis === 'favorable' ? 'Validé' : 'Refusé'}</span></div>
@@ -249,9 +265,9 @@ function vueAlertes() {
     ${mesValidations.length ? '' : ''}</section>
   ${typeof sectionConventionsAlertes === 'function' ? sectionConventionsAlertes() : ''}
   <section class="carte"><h2>🚨 Plan d’urgence (${u.length})</h2><p class="doux">Élèves à 10 jours ou moins du début du stage sans convention signée : le professeur référent prend le dossier en main.</p>
-    ${u.length ? `<div class="table-scroll"><table><tr><th>Élève</th><th>Échéance</th><th>Avancement</th><th>Référent</th><th>Prise en main</th><th></th></tr>${u.map(e => { const d = e.d, cl = classeDe(d), j = jours(datesEleve(d).debut), moi = cl && cl.referentId === S.user.id;
+    ${u.length ? `<div class="table-scroll"><table><tr><th>Élève</th><th>Échéance</th><th>Avancement</th><th>Référent</th><th>Prise en main</th><th></th></tr>${u.map(e => { const d = e.d, cl = classeDe(d), j = jours(datesEleve(d).debut), moi = referentsDe(cl).includes(S.user.id);
       return `<tr><td><b>${esc(nomEleve(e))}</b><br><span class="petit doux">${esc(cl ? cl.nom : '')}</span></td><td><b style="color:#dc2626">${j > 0 ? 'J-' + j : 'Stage commencé'}</b><br><span class="petit doux">${fmt(datesEleve(d).debut)}</span></td>
-        <td style="min-width:170px">${barre(niveau(d), true, d)}</td><td>${moi ? '<span class="badge" style="background:#dc2626">Vous</span>' : esc(cl && nomProf(cl.referentId) || 'Non désigné')}</td>
+        <td style="min-width:170px">${barre(niveau(d), true, d)}</td><td>${moi ? '<span class="badge" style="background:#dc2626">Vous</span>' : esc(nomsReferents(cl) || 'Non désigné')}</td>
         <td>${d.prof.urgence ? `✅ ${esc(d.prof.urgence.par)}<br><span class="petit doux">${fmt(d.prof.urgence.date)}</span>` : '<b>À prendre en main</b>'}</td><td>${bouton(e, 'synthese')}</td></tr>`; }).join('')}</table></div>` : '<p>✅ Aucun élève en situation d’urgence.</p>'}</section>
   <section class="carte"><h2>🟣 Documents à relire (${relire.length})</h2>
     ${relire.length ? relire.map(({ e, t }) => `<p><b>${esc(nomEleve(e))}</b> — ${TITRES[t]} ${e.d[t].deposeLe ? 'déposé sur l’ENT' : 'modifié'} le ${fmt(e.d[t].deposeLe || e.d[t].majLe)} ${bouton(e, t)}</p>`).join('') : '<p class="doux">Rien à relire.</p>'}</section>
@@ -261,7 +277,8 @@ function vueAlertes() {
 
 /* ---------- Classes et dates ---------- */
 function vueClasses() {
-  return `<section class="carte"><h2>Classes et dates de stage</h2><p class="doux">Chaque classe a une couleur, un professeur référent et une ou plusieurs périodes de stage. Les alertes des élèves et le plan d’urgence (J-10) se calculent sur la prochaine période.</p>
+  return `<section class="carte"><h2>Classes et dates de stage</h2><p class="doux">Chaque classe a une couleur, un ou plusieurs professeurs référents et une ou plusieurs périodes de stage. Les alertes des élèves et le plan d’urgence (J-10) se calculent sur la prochaine période.</p>
+    <div class="alerte info petit">🔒 Une classe et ses élèves ne sont visibles que par ses professeurs référents (et par le DDFPT).${S.user.role === 'prof' ? ' Vous ne voyez ici que vos classes et celles qui n’ont pas encore de référent.' : ''}</div>
     ${S.codeEleve ? `<div class="alerte info">🔑 Code d’inscription à communiquer aux élèves : <b>${esc(S.codeEleve)}</b></div>` : ''}
     ${carteEtablissement()}
     <div class="carte" style="margin:0 0 14px"><h3>✉️ Réception des protocoles d’accord</h3>
@@ -269,13 +286,13 @@ function vueClasses() {
       <div class="ligne"><input id="moi_email" type="email" value="${esc(S.user.email || '')}" placeholder="prenom.nom@ac-normandie.fr" aria-label="Votre adresse e-mail">
         <button class="btn" data-a="sauverEmail">Enregistrer</button></div>
       ${S.user.email ? '' : '<p class="petit" style="color:#b45309;margin-top:6px">⚠️ Sans adresse, vos élèves ne pourront pas vous envoyer leur protocole : ils devront vous le remettre en main propre ou via l’ENT.</p>'}</div>
-    <button class="btn" data-a="nouvelleClasse">➕ Nouvelle classe</button></section>${S.classes.map(carteClasse).join('')}`;
+    <button class="btn" data-a="nouvelleClasse">➕ Nouvelle classe</button></section>${classesVisibles().map(carteClasse).join('')}`;
 }
 function carteClasse(cl) {
   const els = S.eleves.filter(e => e.d.profil.classeId === cl.id);
   return `<section class="classe" style="--cc:${esc(cl.couleur)}" data-cl="${cl.id}"><header><h2>${esc(cl.nom || 'Nouvelle classe')}</h2><span>${els.length} élève(s)</span>${cl.neuf ? '<span>non enregistrée</span>' : ''}</header><div style="padding:16px">
     <div class="deux"><label>Nom de la classe<input class="c_nom" value="${esc(cl.nom)}" placeholder="ex. 3e B"></label><label>Couleur<input type="color" class="c_couleur" value="${esc(cl.couleur)}"></label><label>Diplôme préparé <span class="doux petit">(sur la convention)</span><input class="c_diplome" value="${esc(cl.diplome || '')}" placeholder="ex. TLEPRO METIERS ELECT. ENVIRON. CONNECTES"></label>
-      <label>Professeur référent<select class="c_ref"><option value="">— Non désigné —</option>${S.profs.map(p => `<option value="${p.id}" ${p.id === cl.referentId ? 'selected' : ''}>${esc(nomComplet(p))}</option>`).join('')}</select></label></div>
+      <fieldset class="c_refs"><legend>Professeurs référents <span class="doux petit">(eux seuls voient la classe)</span></legend>${S.profs.map(p => `<label><input type="checkbox" class="c_ref" value="${p.id}" ${referentsDe(cl).includes(p.id) ? 'checked' : ''}>${esc(nomComplet(p))}${p.id === S.user.id ? ' <span class="doux">(vous)</span>' : ''}</label>`).join('')}</fieldset></div>
     <h3>Périodes de stage</h3>
     <div class="table-scroll"><table><tr><th>Intitulé</th><th>Début</th><th>Fin</th><th></th></tr>${cl.periodes.map(p => `<tr data-p="${p.id}"><td><input class="p_label" value="${esc(p.label)}" aria-label="Intitulé"></td><td><input type="date" class="p_debut" value="${esc(p.debut)}" aria-label="Début"></td>
       <td><input type="date" class="p_fin" value="${esc(p.fin)}" aria-label="Fin"></td><td><button class="btn mini danger" data-a="supPeriode" data-p="${p.id}">Retirer</button></td></tr>`).join('')}</table></div>
@@ -288,16 +305,17 @@ function carteClasse(cl) {
 }
 function lireClasse(el) {
   const sec = el.closest('[data-cl]'), cl = S.classes.find(c => c.id === sec.dataset.cl);
-  cl.nom = $('.c_nom', sec).value.trim(); cl.couleur = $('.c_couleur', sec).value; cl.referentId = $('.c_ref', sec).value; cl.diplome = $('.c_diplome', sec).value.trim();
+  cl.nom = $('.c_nom', sec).value.trim(); cl.couleur = $('.c_couleur', sec).value; cl.referentIds = [...$$('.c_ref:checked', sec)].map(x => x.value); cl.referentId = cl.referentIds[0] || ''; cl.diplome = $('.c_diplome', sec).value.trim();
   for (const tr of $$('tr[data-p]', sec)) { const p = cl.periodes.find(x => x.id === tr.dataset.p); Object.assign(p, { label: $('.p_label', tr).value.trim(), debut: $('.p_debut', tr).value, fin: $('.p_fin', tr).value }); }
   return { cl, sec };
 }
-A.nouvelleClasse = () => { S.classes.push({ id: uid(), nom: '', couleur: PALETTE[S.classes.length % PALETTE.length], referentId: S.user.id, periodes: [{ id: uid(), label: 'Stage', debut: '', fin: '' }], neuf: true }); render(); window.scrollTo(0, document.body.scrollHeight); };
+A.nouvelleClasse = () => { const moi = S.user.role === 'prof' ? [S.user.id] : []; S.classes.push({ id: uid(), nom: '', couleur: PALETTE[S.classes.length % PALETTE.length], referentIds: moi, referentId: moi[0] || '', periodes: [{ id: uid(), label: 'Stage', debut: '', fin: '' }], neuf: true }); render(); window.scrollTo(0, document.body.scrollHeight); };
 A.ajouterPeriode = el => { lireClasse(el).cl.periodes.push({ id: uid(), label: 'Stage', debut: '', fin: '' }); render(); };
 A.supPeriode = el => { const { cl } = lireClasse(el); cl.periodes = cl.periodes.filter(p => p.id !== el.dataset.p); render(); };
 A.sauverClasse = async el => {
   const { cl } = lireClasse(el);
   if (!cl.nom) throw new Error('Donnez un nom à la classe.');
+  if (S.user.role === 'prof' && cl.referentIds.length && !cl.referentIds.includes(S.user.id) && !confirm('Vous n’êtes plus référent de cette classe : vous ne la verrez plus, ni ses élèves. Continuer ?')) return;
   for (const p of cl.periodes) { if (!p.debut || !p.fin) throw new Error('Chaque période doit avoir une date de début et de fin.'); if (p.fin < p.debut) throw new Error('Une période se termine avant son début.'); }
   const propre = { ...cl }; delete propre.neuf;
   await mutCommun('classes', l => { const i = l.findIndex(c => c.id === cl.id); if (i >= 0) l[i] = propre; else l.push(propre); });
@@ -427,8 +445,8 @@ A.demo = async () => {
   await mutCommun('entreprises', l => D.forEach(([nom, secteur, adresse, lat, lon], i) => l.push({ id: uid() + i, nom, secteur, adresse, lat, lon, tel: `04 00 00 00 ${String(i + 10)}`, email: '', contact: '', notes: 'Entreprise fictive (démonstration)' })));
   if (!S.classes.length) {
     const plus = n => { const d = new Date(); d.setDate(d.getDate() + n); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
-    await mutCommun('classes', l => l.push({ id: uid() + 'a', nom: '3e A (démo)', couleur: PALETTE[0], referentId: S.user.id, periodes: [{ id: uid(), label: 'Stage d’observation', debut: plus(45), fin: plus(49) }] },
-      { id: uid() + 'b', nom: '2de Pro (démo)', couleur: PALETTE[1], referentId: S.user.id, periodes: [{ id: uid(), label: 'PFMP 1', debut: plus(8), fin: plus(29) }] }));
+    await mutCommun('classes', l => l.push({ id: uid() + 'a', nom: '3e A (démo)', couleur: PALETTE[0], referentIds: [S.user.id], referentId: S.user.id, periodes: [{ id: uid(), label: 'Stage d’observation', debut: plus(45), fin: plus(49) }] },
+      { id: uid() + 'b', nom: '2de Pro (démo)', couleur: PALETTE[1], referentIds: [S.user.id], referentId: S.user.id, periodes: [{ id: uid(), label: 'PFMP 1', debut: plus(8), fin: plus(29) }] }));
   }
   render(); toast('Données de démonstration chargées (région lyonnaise)');
 };
@@ -559,7 +577,7 @@ function vueSynthese() {
     const periodes = (cl.periodes || []).filter(p => p.debut).sort((a, b) => a.debut.localeCompare(b.debut));
     const pc = periodeCourante(cl), j = pc ? jours(pc.debut) : null, u = els.filter(e => enUrgence(e.d)).length;
     return `<tr><td><span class="pastille-classe" style="background:${esc(cl.couleur)}"></span><b>${esc(cl.nom)}</b>${cl.diplome ? `<br><span class="petit doux">${esc(cl.diplome)}</span>` : ''}</td>
-      <td>${esc(nomProf(cl.referentId) || '—')}</td>
+      <td>${esc(nomsReferents(cl) || '—')}</td>
       <td>${periodes.length ? periodes.map(p => `<div class="petit">${esc(p.label || 'PFMP')} : ${fmt(p.debut)} → ${fmt(p.fin)}${pc && p.id === pc.id && j > 0 ? ` <b>(J-${j})</b>` : ''}</div>`).join('') : '<span class="doux">Non fixées</span>'}</td>
       <td class="centre">${els.length}</td>
       <td><div class="mini-niveaux">${par.map((n, i) => n ? `<span title="${n} élève(s) : ${NIV[i].l}" style="background:${NIV[i].c};flex:${n}">${n}</span>` : '').join('') || '<span class="vide">aucun élève</span>'}</div>

@@ -194,6 +194,7 @@ function routesJournal(route, b, user, estProf) {
   if (annexe !== null ? !/^[1-6]$/.test(annexe) : !/^\d{4}-\d{2}-\d{2}$/.test(date)) return ko(400, 'invalide');
   const eleveId = user.role === 'eleve' ? user.id : String(b.eleveId || '');
   if (!/^[a-f0-9]{12}$/.test(eleveId) || (!estProf && eleveId !== user.id)) return ko(403, 'interdit');
+  if (estProf && !voitEleve(user, eleveId)) return ko(403, 'interdit');
   const suffixe = annexe !== null ? 'annexe-' + annexe : 'photo-' + date;
   const cle = 'eleve/' + eleveId + '/' + suffixe, meta = JSON.parse(getDoc(cle));
   if (route === 'POST /api/journal/photo/lire') {
@@ -222,6 +223,7 @@ function routesFichier(route, b, user, estProf) {
   if (TYPES_FICHIER.indexOf(type) < 0) return ko(400, 'invalide');
   const eleveId = user.role === 'eleve' ? user.id : String(b.eleveId || '');
   if (!/^[a-f0-9]{12}$/.test(eleveId) || (!estProf && eleveId !== user.id)) return ko(403, 'interdit');
+  if (estProf && !voitEleve(user, eleveId)) return ko(403, 'interdit');
   const cleMeta = 'eleve/' + eleveId + '/fichier-' + type, cleDoc = 'eleve/' + eleveId + '/' + type;
   const meta = JSON.parse(getDoc(cleMeta));
 
@@ -269,9 +271,21 @@ function toutesConventions() {
 // Vue « publique » du suivi (sans codes ni cle de l'eleve).
 const resumeConv = m => ({ id: m.id, eleveId: m.eleveId, demandeId: m.demandeId, classeId: m.classeId, creeLe: m.creeLe, majLe: m.majLe,
   roles: m.roles, signatures: m.signatures, statut: m.statut, version: m.version });
-function referentDeClasse(classeId) {
-  const cl = ((JSON.parse(getDoc('commun/classes')) || {}).classes || []).find(c => c.id === classeId);
-  return cl ? (cl.referentId || '') : '';
+// Professeurs referents d'une classe (plusieurs possibles ; referentId pour les anciennes donnees).
+function referentsDe(cl) { return !cl ? [] : (cl.referentIds && cl.referentIds.length ? cl.referentIds : (cl.referentId ? [cl.referentId] : [])); }
+function lesClasses() { return (JSON.parse(getDoc('commun/classes')) || {}).classes || []; }
+function referentsDeClasse(classeId) { return referentsDe(lesClasses().find(c => c.id === classeId)); }
+// Un professeur ne voit que les eleves des classes dont il est referent (ou d'une classe sans referent) ; le DDFPT voit tout.
+function voitClasse(user, classeId, classes) {
+  if (user.role === 'ddfpt') return true;
+  if (user.role !== 'prof') return false;
+  const cl = (classes || lesClasses()).find(c => c.id === classeId), r = referentsDe(cl);
+  return !cl || !r.length || r.indexOf(user.id) >= 0;
+}
+function voitEleve(user, eleveId, classes) {
+  if (user.role === 'eleve') return user.id === eleveId;
+  const p = JSON.parse(getDoc('eleve/' + eleveId + '/profil')) || {};
+  return voitClasse(user, p.classeId || (comptes().find(u => u.id === eleveId) || {}).classeId, classes);
 }
 // Qui peut agir sur une convention, pour quel role.
 function peutAgir(m, user, role, code) {
@@ -285,7 +299,7 @@ function peutAgir(m, user, role, code) {
   }
   if (!user) return false;
   if (role === 'eleve') return user.role === 'eleve' && user.id === m.eleveId;
-  if (role === 'referent') { const r = referentDeClasse(m.classeId); return user.role === 'prof' && (!r || r === user.id); }
+  if (role === 'referent') { const r = referentsDeClasse(m.classeId); return user.role === 'prof' && (!r.length || r.indexOf(user.id) >= 0); }
   if (role === 'chef') return (user.role === 'prof' || user.role === 'ddfpt') && !!user.chef;
   return false;
 }
@@ -310,7 +324,7 @@ function routesConvention(route, b, user, jeton) {
 
   if (route === 'GET /api/conventions') {
     const l = toutesConventions().filter(m => m.statut !== 'annulee');
-    if (user.role === 'prof') return ok(l.map(resumeConv));
+    if (user.role === 'prof') { const cls = lesClasses(); return ok(l.filter(m => user.chef || voitClasse(user, m.classeId, cls)).map(resumeConv)); }
     return ok(l.filter(m => m.eleveId === user.id).map(m => Object.assign(resumeConv(m), { cleEleve: m.cleEleve })));
   }
   if (route === 'POST /api/convention/creer') {
@@ -750,22 +764,22 @@ function router(m, chemin, route, b, jeton) {
     const classes = (JSON.parse(getDoc('commun/classes')) || {}).classes || [];
     const profil = JSON.parse(getDoc('eleve/' + user.id + '/profil')) || {};
     const cl = classes.find(c => c.id === (profil.classeId || user.classeId));
-    const referent = cl && cl.referentId && comptes().find(u => u.id === cl.referentId && u.role === 'prof');
-    if (!referent) return ko(409, 'pas_de_referent');
-    if (!referent.email) return ko(409, 'referent_sans_email');
+    const ids = referentsDe(cl), referents = comptes().filter(u => ids.indexOf(u.id) >= 0 && u.role === 'prof'), avecMail = referents.filter(u => u.email);
+    if (!referents.length) return ko(409, 'pas_de_referent');
+    if (!avecMail.length) return ko(409, 'referent_sans_email');
     const fichier = String(b.fichier || 'Protocole.pdf').replace(/[^A-Za-z0-9._-]/g, '_').slice(0, 90);
     const entreprise = String(b.entreprise || '').slice(0, 120);
     const eleve = (profil.prenom || user.prenom) + ' ' + (profil.nom || user.nom);
     try {
       MailApp.sendEmail({
-        to: referent.email, name: 'Suivi des stages',
+        to: avecMail.map(u => u.email).join(','), name: 'Suivi des stages',
         subject: "Protocole d'accord - " + eleve + (cl ? ' (' + cl.nom + ')' : '') + (entreprise ? ' - ' + entreprise : ''),
         body: 'Bonjour,\n\n' + eleve + (cl ? ', eleve de ' + cl.nom + ',' : '') + " vous transmet son protocole d'accord" +
           (entreprise ? ' pour l\'entreprise ' + entreprise : '') + ' (piece jointe).\n\nMessage envoye automatiquement par l\'application Suivi des stages.',
         attachments: [Utilities.newBlob(Utilities.base64Decode(pdf), 'application/pdf', fichier)],
       });
     } catch (err) { console.error('Envoi du protocole impossible : ' + (err && err.message)); return ko(502, 'envoi_impossible'); }
-    return ok({ ok: true, destinataire: referent.prenom + ' ' + referent.nom });
+    return ok({ ok: true, destinataire: avecMail.map(u => u.prenom + ' ' + u.nom).join(', ') });
   }
   if (route === 'POST /api/deconnexion') return ok({ ok: true });
   if (route === 'GET /api/profs') return ok(comptes().filter(u => u.role === 'prof').map(u => ({ id: u.id, nom: u.nom, prenom: u.prenom })));
@@ -773,7 +787,8 @@ function router(m, chemin, route, b, jeton) {
   if (route === 'GET /api/admin/codes') return estProf ? ok({ codeEleve: c.codeEleve, codeOffres: c.codeOffres }) : ko(403, 'interdit');
   if (route === 'GET /api/eleves') {
     if (!estProf) return ko(403, 'interdit');
-    return ok(comptes().filter(u => u.role === 'eleve').map(u => {
+    const cls = lesClasses();
+    return ok(comptes().filter(u => u.role === 'eleve' && voitEleve(user, u.id, cls)).map(u => {
       const docs = {};
       SECTIONS.forEach(s => { docs[s] = JSON.parse(getDoc('eleve/' + u.id + '/' + s)); });
       return { id: u.id, identifiant: u.identifiant, docs: docs };
@@ -783,6 +798,7 @@ function router(m, chemin, route, b, jeton) {
     if (!estProf) return ko(403, 'interdit');
     const l = comptes(), cible = l.find(u => u.id === String(b.id));
     if (!cible || cible.role !== 'eleve') return ko(404, 'introuvable');
+    if (!voitEleve(user, cible.id)) return ko(403, 'interdit');
     if (route === 'POST /api/admin/motdepasse') {
       const mdp = String(b.motdepasse || '');
       if (mdp.length < 6 || mdp.length > 200) return ko(400, 'motdepasse_court');
@@ -810,12 +826,22 @@ function router(m, chemin, route, b, jeton) {
     else if (me && SECTIONS.indexOf(me[2]) >= 0) {
       if (!estProf && user.id !== me[1]) return ko(403, 'interdit');
       if (!comptes().some(u => u.id === me[1])) return ko(404, 'introuvable');
+      if (estProf && !voitEleve(user, me[1])) return ko(403, 'interdit');
       droitEcriture = estProf || me[2] !== 'prof';
     } else return ko(404, 'introuvable');
 
     if (m === 'GET') return ok(JSON.parse(getDoc(cle)));
     if (m === 'PUT') {
       if (!droitEcriture) return ko(403, 'interdit');
+      // Un professeur ne peut pas modifier (ni supprimer) une classe dont d'autres professeurs sont referents.
+      if (cle === 'commun/classes' && user.role === 'prof') {
+        const apres = (b && b.classes) || [];
+        for (const oc of lesClasses()) {
+          const r = referentsDe(oc); if (!r.length || r.indexOf(user.id) >= 0) continue;
+          const nc = apres.find(c => c.id === oc.id);
+          if (!nc || JSON.stringify(nc) !== JSON.stringify(oc)) return ko(403, 'classe_autre_referent');
+        }
+      }
       const texte = JSON.stringify(b === undefined ? null : b);
       if (texte.length > 2000000) return ko(413, 'trop_gros');
       setDoc(cle, texte);

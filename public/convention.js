@@ -72,7 +72,7 @@ function blocConventionEleve(dem) {
 /* ---------- Élève : formulaire de création ---------- */
 function brouillonConvention(dem) {
   const d = S.el, p = dem.protocole || {}, n = p.ent || {}, cl = S.classes.find(c => c.id === d.profil.classeId) || {};
-  const ref = cl.referentId ? S.profs.find(x => x.id === cl.referentId) : null, dt = datesEleve(d), pe = (typeof PROTO !== 'undefined' && PROTO && PROTO.eleve) || {};
+  const ref = S.profs.find(x => x.id === referentsDe(cl)[0]) || null, dt = datesEleve(d), pe = (typeof PROTO !== 'undefined' && PROTO && PROTO.eleve) || {};
   return {
     eleve: { nom: pe.nom || '', prenom: d.profil.prenom || '', naissance: pe.naissance || '', classe: cl.nom || pe.classe || '', groupe: '', adresse: pe.adresse || '', tel: pe.telEleve || '', email: '' },
     representant: { nom: '', tel: pe.telRepresentants || '', email: '' },

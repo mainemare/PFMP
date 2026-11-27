@@ -167,6 +167,15 @@ async function traiter(req, res) {
   const user = auth.startsWith('Bearer ') ? lireJeton(auth.slice(7)) : null;
   if (!user) return erreur(req, res, 401, 'non_connecte');
   const estProf = user.role === 'prof' || user.role === 'ddfpt';   // personnel : professeurs et DDFPT
+  // Un professeur ne voit que les eleves des classes dont il est referent (ou d'une classe sans referent) ; le DDFPT voit tout.
+  const referentsDe = cl => !cl ? [] : cl.referentIds && cl.referentIds.length ? cl.referentIds : cl.referentId ? [cl.referentId] : [];
+  const lesClasses = () => (JSON.parse(getDoc('commun/classes')) || {}).classes || [];
+  const voitEleve = (id, cls = lesClasses()) => {
+    if (user.role === 'ddfpt') return true;
+    if (user.role !== 'prof') return user.id === id;
+    const p = JSON.parse(getDoc(`eleve/${id}/profil`)) || {}, cl = cls.find(c => c.id === (p.classeId || (users.find(u => u.id === id) || {}).classeId)), r = referentsDe(cl);
+    return !cl || !r.length || r.includes(user.id);
+  };
 
   // Eleve : entreprise trouvee par lui-meme, proposee pour la base (validation par un prof ou le DDFPT).
   if (route === 'POST /api/entreprises/proposer') {
@@ -207,7 +216,8 @@ async function traiter(req, res) {
   }
   if (route === 'GET /api/eleves') {
     if (!estProf) return erreur(req, res, 403, 'interdit');
-    const parts = users.filter(u => u.role === 'eleve').map(u =>
+    const cls = lesClasses();
+    const parts = users.filter(u => u.role === 'eleve' && voitEleve(u.id, cls)).map(u =>
       `{"id":"${u.id}","identifiant":${JSON.stringify(u.identifiant)},"docs":{${SECTIONS.map(s => `"${s}":${getDoc(`eleve/${u.id}/${s}`)}`).join(',')}}}`);
     return envoyer(req, res, 200, '[' + parts.join(',') + ']');
   }
@@ -215,6 +225,7 @@ async function traiter(req, res) {
     if (!estProf) return erreur(req, res, 403, 'interdit');
     const b = await lireJson(req), cible = users.find(u => u.id === String(b.id));
     if (!cible || cible.role !== 'eleve') return erreur(req, res, 404, 'introuvable');
+    if (!voitEleve(cible.id)) return erreur(req, res, 403, 'interdit');
     if (route.endsWith('motdepasse')) {
       const mdp = String(b.motdepasse || '');
       if (mdp.length < 6 || mdp.length > 200) return erreur(req, res, 400, 'motdepasse_court');
@@ -240,6 +251,7 @@ async function traiter(req, res) {
     else if (me && SECTIONS.includes(me[2])) {
       if (!estProf && user.id !== me[1]) return erreur(req, res, 403, 'interdit');
       if (!users.some(u => u.id === me[1])) return erreur(req, res, 404, 'introuvable');
+      if (estProf && !voitEleve(me[1])) return erreur(req, res, 403, 'interdit');
       ecriture = estProf || me[2] !== 'prof';
     } else return erreur(req, res, 404, 'introuvable');
 
@@ -247,7 +259,15 @@ async function traiter(req, res) {
     if (m === 'PUT') {
       if (!ecriture) return erreur(req, res, 403, 'interdit');
       const corps = await lireCorps(req);
-      try { JSON.parse(corps); } catch { return erreur(req, res, 400, 'invalide'); }
+      let nouveau; try { nouveau = JSON.parse(corps); } catch { return erreur(req, res, 400, 'invalide'); }
+      if (cle === 'commun/classes' && user.role === 'prof') {
+        const apres = (nouveau && nouveau.classes) || [];
+        for (const oc of lesClasses()) {
+          const r = referentsDe(oc); if (!r.length || r.includes(user.id)) continue;
+          const nc = apres.find(c => c.id === oc.id);
+          if (!nc || JSON.stringify(nc) !== JSON.stringify(oc)) return erreur(req, res, 403, 'classe_autre_referent');
+        }
+      }
       setDoc(cle, corps);
       return envoyer(req, res, 200, '{"ok":true}');
     }

@@ -27,7 +27,7 @@ const ERR = {
   identifiant_invalide: 'Identifiant : 3 à 40 caractères (lettres sans accent, chiffres, point, tiret).',
   motdepasse_court: 'Le mot de passe doit contenir au moins 6 caractères.', code_prof: 'Code professeur incorrect.',
   classe_requise: 'Choisis ta classe.', nom_requis: 'Nom et prénom sont obligatoires.', interdit: 'Action non autorisée.',
-  code_eleve: 'Code d’inscription élève incorrect : demande-le à ton professeur.', code_ddfpt: 'Code DDFPT incorrect.', code_chef: 'Code « chef d’établissement » incorrect.', convention_deja_signee: 'Cette convention a déjà été signée : elle ne peut plus être recréée. Demande à ton professeur référent de l’annuler si elle doit être corrigée.', convention_introuvable: 'Convention introuvable (elle a peut-être été annulée).', convention_indisponible: 'Les conventions ne sont disponibles qu’avec la version Google de l’application.', pas_lecteur: 'Votre compte ne permet pas d’ouvrir cette convention.', nom_initiales: 'Pour le nom, indique seulement les 2 premières lettres.', referent_sans_email: 'Ton professeur référent n’a pas encore indiqué son adresse e-mail dans l’application.', pas_de_referent: 'Aucun professeur référent n’est désigné pour ta classe.', envoi_impossible: 'L’e-mail n’a pas pu être envoyé (service de messagerie indisponible).', envoi_indisponible: 'L’envoi par e-mail n’est pas disponible avec ce serveur.', email_invalide: 'Adresse e-mail invalide.', trop_gros: 'Fichier trop volumineux.', trop_essais: 'Trop de tentatives. Réessaie dans quelques minutes.', pas_un_pdf: 'Ce fichier n’est pas un PDF valide.', lba_non_configure: 'La clé de l’API apprentissage n’est pas configurée (LBA_API_KEY).', lba_cle: 'L’API apprentissage refuse la clé : vérifiez LBA_API_KEY.', lba_recherche: 'La recherche des offres en apprentissage a échoué : réessayez plus tard.', ft_non_configure: 'La connexion à France Travail n’est pas configurée (FT_CLIENT_ID et FT_CLIENT_SECRET dans les propriétés du script).', ft_identifiants: 'France Travail refuse les identifiants : vérifiez FT_CLIENT_ID, FT_CLIENT_SECRET et l’abonnement à l’API Offres d’emploi.', ft_recherche: 'La recherche France Travail a échoué : réessayez plus tard.', ft_indisponible: 'L’import France Travail n’est disponible qu’avec la version Google.', lien_expire: 'Ce lien a expiré ou a été annulé.', deja_signe: 'Ce protocole a déjà été signé.', protosig_indisponible: 'La signature à distance n’est disponible qu’avec la version Google de l’application.', mission_indisponible: 'Les ordres de mission ne sont disponibles qu’avec la version Google de l’application.', fichier_indisponible: 'Le dépôt de documents n’est disponible qu’avec la version Google de l’application.',
+  code_eleve: 'Code d’inscription élève incorrect : demande-le à ton professeur.', code_ddfpt: 'Code DDFPT incorrect.', code_chef: 'Code « chef d’établissement » incorrect.', convention_deja_signee: 'Cette convention a déjà été signée : elle ne peut plus être recréée. Demande à ton professeur référent de l’annuler si elle doit être corrigée.', convention_introuvable: 'Convention introuvable (elle a peut-être été annulée).', convention_indisponible: 'Les conventions ne sont disponibles qu’avec la version Google de l’application.', pas_lecteur: 'Votre compte ne permet pas d’ouvrir cette convention.', classe_autre_referent: 'Cette classe a d’autres professeurs référents : seuls eux (ou le DDFPT) peuvent la modifier.', nom_initiales: 'Pour le nom, indique seulement les 2 premières lettres.', referent_sans_email: 'Ton professeur référent n’a pas encore indiqué son adresse e-mail dans l’application.', pas_de_referent: 'Aucun professeur référent n’est désigné pour ta classe.', envoi_impossible: 'L’e-mail n’a pas pu être envoyé (service de messagerie indisponible).', envoi_indisponible: 'L’envoi par e-mail n’est pas disponible avec ce serveur.', email_invalide: 'Adresse e-mail invalide.', trop_gros: 'Fichier trop volumineux.', trop_essais: 'Trop de tentatives. Réessaie dans quelques minutes.', pas_un_pdf: 'Ce fichier n’est pas un PDF valide.', lba_non_configure: 'La clé de l’API apprentissage n’est pas configurée (LBA_API_KEY).', lba_cle: 'L’API apprentissage refuse la clé : vérifiez LBA_API_KEY.', lba_recherche: 'La recherche des offres en apprentissage a échoué : réessayez plus tard.', ft_non_configure: 'La connexion à France Travail n’est pas configurée (FT_CLIENT_ID et FT_CLIENT_SECRET dans les propriétés du script).', ft_identifiants: 'France Travail refuse les identifiants : vérifiez FT_CLIENT_ID, FT_CLIENT_SECRET et l’abonnement à l’API Offres d’emploi.', ft_recherche: 'La recherche France Travail a échoué : réessayez plus tard.', ft_indisponible: 'L’import France Travail n’est disponible qu’avec la version Google.', lien_expire: 'Ce lien a expiré ou a été annulé.', deja_signe: 'Ce protocole a déjà été signé.', protosig_indisponible: 'La signature à distance n’est disponible qu’avec la version Google de l’application.', mission_indisponible: 'Les ordres de mission ne sont disponibles qu’avec la version Google de l’application.', fichier_indisponible: 'Le dépôt de documents n’est disponible qu’avec la version Google de l’application.',
   non_connecte: 'Session expirée, reconnecte-toi.', introuvable: 'Élément introuvable.',
 };
 const NIV = [
@@ -62,6 +62,11 @@ const CHAMPS = {
     ['pro', 'Me présenter professionnellement', 'Ma formation, mon projet, ce que je sais faire, pourquoi cette entreprise m’intéresse…', 4],
     ['motsCles', 'Mes mots-clés à ne pas oublier', 'dates du stage · durée · convention · à qui envoyer mon CV · merci · au revoir', 3]],
 };
+// Professeurs référents d'une classe (plusieurs possibles ; referentId reste pour les anciennes données).
+const referentsDe = cl => !cl ? [] : cl.referentIds && cl.referentIds.length ? cl.referentIds : cl.referentId ? [cl.referentId] : [];
+const nomsReferents = cl => referentsDe(cl).map(id => { const p = (S.profs || []).find(x => x.id === id); return p ? nomComplet(p) : ''; }).filter(Boolean).join(', ');
+// Un professeur ne voit que les classes dont il est référent (et celles sans référent) ; le DDFPT voit tout.
+const classesVisibles = () => S.user && S.user.role === 'prof' ? S.classes.filter(c => { const r = referentsDe(c); return !r.length || r.includes(S.user.id); }) : S.classes;
 const TITRES = { cv: 'CV', lettre: 'Lettre de motivation', memento: 'Memento d’appel', attestation: 'Attestation de stage' };
 
 /* ---------- Serveur ---------- */
@@ -113,15 +118,36 @@ function dist(a, b) {
 }
 // Seuils de la recherche : « active » à partir de 10 entreprises contactées, « très active » à partir de 20.
 const SEUIL_ACTIVE = 10, SEUIL_TRES_ACTIVE = 20;
-const nbContactees = d => d.demandes.liste.filter(x => x.statut !== 'a_appeler').length;
-function niveauAuto(d) {
-  const l = d.demandes.liste, a = s => l.some(x => x.statut === s);
+/* ---------- Périodes de stage : chaque période a sa propre recherche ----------
+ * Une demande appartient à une période (periodeId) ; les anciennes demandes sans période sont rangées
+ * dans la période en cours au moment de leur création. Le niveau se calcule période par période. */
+const cleP = p => p.id || p.debut;
+const classeEleve = d => S.classes.find(c => c.id === d.profil.classeId);
+function periodesEleve(d) { const cl = classeEleve(d); return cl && cl.periodes ? cl.periodes.filter(x => x.debut).sort((a, b) => a.debut.localeCompare(b.debut)) : []; }
+function periodeActive(d) { const p = periodeCourante(classeEleve(d)); return p ? cleP(p) : ''; }
+// Période où l'élève ajoute ses entreprises : celle ouverte dans « Mes appels » si elle n'est pas terminée, sinon la période en cours.
+function periodeCible(d) {
+  const p = S.periodeVue && periodesEleve(d).find(x => cleP(x) === S.periodeVue);
+  return p && (p.fin || p.debut) >= today() ? cleP(p) : periodeActive(d);
+}
+function periodeDeDemande(d, x) {
+  const ps = periodesEleve(d); if (!ps.length) return '';
+  if (x.periodeId && ps.some(p => cleP(p) === x.periodeId)) return x.periodeId;
+  const j = String(x.creeLe || '').slice(0, 10) || today();
+  return cleP(ps.find(p => (p.fin || p.debut) >= j) || ps[ps.length - 1]);
+}
+const demandesP = (d, k = periodeActive(d)) => k ? d.demandes.liste.filter(x => periodeDeDemande(d, x) === k) : d.demandes.liste;
+const nbContactees = (d, k) => demandesP(d, k).filter(x => x.statut !== 'a_appeler').length;
+// Niveau fixé par un professeur : il ne vaut que pour la période où il a été fixé.
+const niveauForceDe = (d, k = periodeActive(d)) => d.prof.niveauForce != null && (d.prof.niveauForceP || periodeActive(d)) === k ? d.prof.niveauForce : null;
+function niveauAuto(d, k) {
+  const l = demandesP(d, k), a = s => l.some(x => x.statut === s);
   if (a('convention')) return 5; if (a('protocole')) return 4; if (a('rdv')) return 3;
-  if (nbContactees(d) >= SEUIL_ACTIVE) return 2;
+  if (nbContactees(d, k) >= SEUIL_ACTIVE) return 2;
   return l.length ? 1 : 0;
 }
 const tresActive = d => niveau(d) === 2 && nbContactees(d) >= SEUIL_TRES_ACTIVE;
-const niveau = d => d.prof.niveauForce != null ? d.prof.niveauForce : niveauAuto(d);
+const niveau = (d, k) => { const f = niveauForceDe(d, k); return f != null ? f : niveauAuto(d, k); };
 function periodeCourante(cl) {
   if (!cl || !cl.periodes) return null;
   const p = cl.periodes.filter(x => x.debut).sort((a, b) => a.debut.localeCompare(b.debut));
@@ -137,14 +163,14 @@ function enUrgence(d) {
   return !!dt && jours(dt.debut) <= 10 && dt.fin >= today() && niveau(d) < 5;
 }
 // d (facultatif) : dossier de l'élève, pour afficher « Recherche très active » au niveau 2.
-function barre(n, compact, d) {
-  const c = NIV[n].c, tres = d && n === 2 && nbContactees(d) >= SEUIL_TRES_ACTIVE, l = tres ? '🔥 Recherche très active' : NIV[n].l;
+function barre(n, compact, d, k) {
+  const c = NIV[n].c, tres = d && n === 2 && nbContactees(d, k) >= SEUIL_TRES_ACTIVE, l = tres ? '🔥 Recherche très active' : NIV[n].l;
   return `<div class="barre${compact ? ' compact' : ''}${tres ? ' tres' : ''}" role="img" aria-label="Niveau ${n} sur 5 : ${l}"><div class="segs">${[1, 2, 3, 4, 5].map(i => `<i style="${i <= n ? `background:${c}` : ''}"></i>`).join('')}</div><span style="color:${c}"><b>${n}</b> · ${l}</span></div>`;
 }
 // Texte d'encouragement selon le nombre d'entreprises contactées.
 function progressionRecherche(d) {
   const k = nbContactees(d);
-  if (niveau(d) > 2 || d.prof.niveauForce != null) return '';   // niveau fixé par un professeur : pas de message contradictoire
+  if (niveau(d) > 2 || niveauForceDe(d) != null) return '';   // niveau fixé par un professeur : pas de message contradictoire
   const s = k > 1 ? 's' : '';
   if (k >= SEUIL_TRES_ACTIVE) return `📞 <b>${k}</b> entreprise${s} contactée${s} : bravo, ta recherche est très active !`;
   if (k >= SEUIL_ACTIVE) return `📞 <b>${k}</b> entreprise${s} contactée${s} : encore <b>${SEUIL_TRES_ACTIVE - k}</b> pour une recherche très active.`;
@@ -308,7 +334,16 @@ function vueEleve() {
     default: return vueAccueil();
   }
 }
-const relancesDues = d => d.demandes.liste.filter(x => x.dateRelance && x.dateRelance <= today() && !['refus', 'convention'].includes(x.statut));
+// Accueil : chaque période de stage avec sa propre recherche, séparée des autres.
+function blocPeriodes(d) {
+  const ps = periodesEleve(d), act = periodeActive(d);
+  if (ps.length < 2) return '';
+  return `<section class="carte"><h2>📅 Mes périodes de stage</h2><p class="doux petit">Chaque période a sa propre recherche d’entreprises et son propre niveau.</p>
+    <div class="periodes-liste">${ps.map(p => { const k = cleP(p), l = demandesP(d, k), n = niveau(d, k), etat = k === act ? ['en cours', '#2563eb'] : (p.fin || p.debut) < today() ? ['terminée', '#64748b'] : ['à venir', '#7c3aed'];
+      return `<div class="periode-ligne ${k === act ? 'ici' : ''}"><div><b>${esc(p.label || 'Stage')}</b> <span class="badge" style="background:${etat[1]}">${etat[0]}</span><br><span class="petit doux">${fmt(p.debut)} → ${fmt(p.fin)} · ${l.length} entreprise(s), ${nbContactees(d, k)} contactée(s)</span></div>
+        ${barre(n, true, d, k)}<button class="btn mini sec" data-a="voirAppelsPeriode" data-p="${esc(k)}">Voir les appels</button></div>`; }).join('')}</div></section>`;
+}
+const relancesDues = d => demandesP(d, periodeCible(d)).filter(x => x.dateRelance && x.dateRelance <= today() && !['refus', 'convention'].includes(x.statut));
 
 function alerteEleve(d) {
   const dt = datesEleve(d), n = niveau(d);
@@ -333,7 +368,7 @@ function rappelQuotidien() {
   } else {
     const u = urgences();
     if (u.length) {
-      const miens = u.filter(e => (S.classes.find(c => c.id === e.d.profil.classeId) || {}).referentId === S.user.id);
+      const miens = u.filter(e => referentsDe(S.classes.find(c => c.id === e.d.profil.classeId)).includes(S.user.id));
       html = `<h2>🚨 Plan d’urgence à déclencher</h2><p><b>${u.length} élève(s)</b> sont à 10 jours ou moins du début du stage sans convention signée${miens.length ? `, dont <b>${miens.length}</b> dans une classe dont vous êtes référent` : ''}.</p>
         <button class="btn" data-a="aller" data-v="alertes">Voir les alertes</button>`;
     }
@@ -345,10 +380,10 @@ function vueAccueil() {
   const d = S.el, n = niveau(d), al = alerteEleve(d);
   const nonLus = d.prof.conseils.filter(c => !d.etat.conseilsLus.includes(c.id)), rel = relancesDues(d);
   const todo = [[d.profil.residences.some(r => r.lat != null), 'Compléter mon profil et mes communes de résidence', 'profil'], [!!d.memento.accroche.trim(), 'Préparer mon memento d’appel', 'memento'],
-    [!!d.cv.deposeLe, 'Déposer mon CV', 'cv'], [!!d.lettre.deposeLe, 'Déposer ma lettre de motivation', 'lettre'], [d.demandes.liste.length > 0, 'Sélectionner des entreprises à appeler', 'entreprises']];
+    [!!d.cv.deposeLe, 'Déposer mon CV', 'cv'], [!!d.lettre.deposeLe, 'Déposer ma lettre de motivation', 'lettre'], [demandesP(d).length > 0, 'Sélectionner des entreprises à appeler', 'entreprises']];
   const ph = phaseEleve(d), recherche = ph === 'avant' || n < 5;
-  return `<div class="alerte ${al.c}" role="alert">${al.h}</div>${blocVisiteEleve(d)}${blocRappelBord(d)}${blocParcours(d)}
-  ${recherche ? `<section class="carte"><h2>🔎 Ma recherche de stage : où j’en suis</h2>${barre(n, false, d)}${progressionRecherche(d) ? `<p style="margin:10px 0 0">${progressionRecherche(d)}</p>` : ''}
+  return `<div class="alerte ${al.c}" role="alert">${al.h}</div>${blocVisiteEleve(d)}${blocRappelBord(d)}${blocParcours(d)}${blocPeriodes(d)}
+  ${recherche ? `<section class="carte"><h2>🔎 Ma recherche de stage${(() => { const p = periodesEleve(d).find(x => cleP(x) === periodeActive(d)); return p && periodesEleve(d).length > 1 ? ` (${esc(p.label || 'Stage')})` : ''; })()} : où j’en suis</h2>${barre(n, false, d)}${progressionRecherche(d) ? `<p style="margin:10px 0 0">${progressionRecherche(d)}</p>` : ''}
     <div class="etapes">${NIV.map((v, i) => `<div class="${i <= n ? 'fait' : ''}" style="${i <= n ? `background:${NIV[n].c}` : ''}"><b>${i}</b>${v.l}</div>`).join('')}</div>
     <p class="doux petit" style="margin-top:10px">Le niveau avance tout seul : 1 dès qu’une entreprise est sélectionnée, 2 (recherche active) à partir de ${SEUIL_ACTIVE} entreprises contactées — très active à partir de ${SEUIL_TRES_ACTIVE} —, puis selon le statut de tes demandes (rendez-vous, protocole, convention).</p></section>
   ` : ''}<div class="grille">
@@ -402,7 +437,7 @@ function plusProche(d, e) {
   return best;
 }
 function suggestions(d) {
-  const pris = new Set(d.demandes.liste.map(x => x.entrepriseId)), out = [];
+  const pris = new Set(demandesP(d, periodeCible(d)).map(x => x.entrepriseId)), out = [];
   for (const e of S.entreprises) {
     if (pris.has(e.id) || e.lat == null || (S.secteur && e.secteur !== S.secteur)) continue;
     let best = null;
@@ -433,7 +468,7 @@ function vueEntreprises() {
   if (!loc.length) return `<section class="carte"><h2>Entreprises proches de chez moi</h2><p>Indique d’abord tes communes de résidence pour recevoir des propositions.</p><button class="btn" data-a="aller" data-v="profil">Compléter mon profil</button></section>`;
   const tout = suggestions(d), nb = d.profil.nbSuggestions || 8;
   if (S.offset >= tout.length) S.offset = 0;
-  const page = tout.slice(S.offset, S.offset + nb), pris = new Set(d.demandes.liste.map(x => x.entrepriseId));
+  const page = tout.slice(S.offset, S.offset + nb), pris = new Set(demandesP(d, periodeCible(d)).map(x => x.entrepriseId));
   const props = d.prof.propositions.filter(p => !pris.has(p.entrepriseId)).map(p => ({ p, e: S.entreprises.find(e => e.id === p.entrepriseId) })).filter(x => x.e);
   const secteurs = [...new Set(S.entreprises.map(e => e.secteur).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'fr'));
   // Points affichés sur la carte : mêmes numéros que dans la liste ; « P1, P2… » pour les propositions des professeurs.
@@ -443,7 +478,7 @@ function vueEntreprises() {
   <section class="carte"><h2>🗺️ Carte</h2>
     <div id="carte" class="carte-map" role="region" aria-label="Carte de mes communes et des entreprises proposées"><p class="doux" style="padding:12px">Chargement de la carte…</p></div>
     <div class="legende petit"><span><i class="pt maison"></i>Mes communes (cercle = distance possible)</span><span><i class="pt sugg"></i>Entreprises proposées</span>
-      ${props.length ? '<span><i class="pt prof"></i>Proposées par un professeur</span>' : ''}${d.demandes.liste.length ? '<span><i class="pt demande"></i>Déjà dans mes appels</span>' : ''}</div></section>
+      ${props.length ? '<span><i class="pt prof"></i>Proposées par un professeur</span>' : ''}${demandesP(d, periodeCible(d)).length ? '<span><i class="pt demande"></i>Déjà dans mes appels</span>' : ''}</div></section>
   <section class="carte"><h2>Entreprises proches de chez moi</h2>
     <p class="doux">Autour de ${loc.map(r => `« ${esc(r.label)} » (${r.rayon} km)`).join(', ')} — ${tout.length} entreprise(s) disponible(s), distances à vol d’oiseau.
       <button class="lien" style="display:inline" data-a="aller" data-v="profil">Modifier mes distances</button></p>
@@ -519,11 +554,11 @@ A.voirSurCarte = el => {
 A.autres = () => { S.offset += S.el.profil.nbSuggestions || 8; render(); };
 const nouvelleDemande = (e, km) => ({
   id: uid(), entrepriseId: e.id || null, nom: e.nom, secteur: e.secteur || '', adresse: e.adresse || '', tel: e.tel || '', email: e.email || '', contact: e.contact || '',
-  km: km === '' || km == null ? null : +km, statut: 'a_appeler', interlocuteur: '', reponse: '', suite: '', dateRelance: '', appels: [], creeLe: maintenant(), majLe: maintenant(),
+  periodeId: S.el ? periodeCible(S.el) : '', km: km === '' || km == null ? null : +km, statut: 'a_appeler', interlocuteur: '', reponse: '', suite: '', dateRelance: '', appels: [], creeLe: maintenant(), majLe: maintenant(),
 });
 A.ajouterSelection = async () => {
   const sel = $$('.sel:checked'); if (!sel.length) throw new Error('Coche au moins une entreprise.');
-  for (const c of sel) { const e = S.entreprises.find(x => x.id === c.value); if (e && !S.el.demandes.liste.some(x => x.entrepriseId === e.id)) S.el.demandes.liste.push(nouvelleDemande(e, c.dataset.km)); }
+  for (const c of sel) { const e = S.entreprises.find(x => x.id === c.value); if (e && !demandesP(S.el, periodeCible(S.el)).some(x => x.entrepriseId === e.id)) S.el.demandes.liste.push(nouvelleDemande(e, c.dataset.km)); }
   await sauver('demandes'); journal(`${sel.length} entreprise(s) ajoutée(s) à la liste d’appels`);
   S.vue = 'suivi'; render(); toast('Entreprises ajoutées à tes appels');
 };
@@ -551,12 +586,23 @@ function carteDemande(x, lecture) {
     ${x.appels.length ? `<details class="petit"><summary>Historique (${x.appels.length} appel(s))</summary>${x.appels.map(a => `<div>• ${fmtDT(a.date)} — ${(STATUTS[a.statut] || [''])[0]}${a.interlocuteur ? ` — ${esc(a.interlocuteur)}` : ''}${a.reponse ? ` : ${esc(a.reponse)}` : ''}</div>`).join('')}</details>` : ''}
     ${lecture ? (x.protocoleEnvoyeLe ? `<p class="petit">🤝 Protocole d’accord envoyé le ${fmtDT(x.protocoleEnvoyeLe)}</p>` : '') : `<div class="actions"><button class="btn mini" data-a="fiche" data-id="${x.id}">📞 Fiche d’appel</button><button class="btn mini sec" data-a="protocolePour" data-id="${x.id}">🤝 Protocole d’accord${x.protocoleEnvoyeLe ? " ✓" : ""}</button><button class="btn mini danger" data-a="supDemande" data-id="${x.id}">Retirer</button></div>`}</div>`;
 }
+function ongletsPeriodes(d, k, action = 'voirPeriode') {
+  const ps = periodesEleve(d), act = periodeActive(d);
+  if (ps.length < 2) return '';
+  return `<div class="onglets-periodes" role="tablist" aria-label="Périodes de stage">${ps.map(p => { const c = cleP(p), n = niveau(d, c);
+    return `<button role="tab" aria-selected="${c === k}" class="${c === k ? 'actif' : ''}" data-a="${action}" data-p="${esc(c)}"><b>${esc(p.label || 'Stage')}</b>${c === act ? ' <span class="badge" style="background:#2563eb">en cours</span>' : ''}
+      <span class="petit">${fmt(p.debut)} → ${fmt(p.fin)}</span><span class="mini-niv" style="background:${NIV[n].c}">${n} · ${NIV[n].l}</span></button>`; }).join('')}</div>`;
+}
+A.voirPeriode = el => { S.periodeVue = el.dataset.p; render(); };
+A.voirAppelsPeriode = el => { S.periodeVue = el.dataset.p; S.vue = 'suivi'; render(); window.scrollTo(0, 0); };
 function vueSuivi() {
-  const l = S.el.demandes.liste;
-  return `<section class="carte"><h2>Ma console d’appels</h2>${barre(niveau(S.el), false, S.el)}${progressionRecherche(S.el) ? `<p class="petit" style="margin:8px 0 0">${progressionRecherche(S.el)}</p>` : ''}
+  const d = S.el, ps = periodesEleve(d), k = S.periodeVue && ps.some(p => cleP(p) === S.periodeVue) ? S.periodeVue : periodeActive(d);
+  const l = demandesP(d, k), p = ps.find(x => cleP(x) === k), courante = k === periodeActive(d), finie = p && (p.fin || p.debut) < today();
+  return `${ongletsPeriodes(d, k)}<section class="carte"><h2>Ma console d’appels${p && ps.length > 1 ? ` · ${esc(p.label || 'Stage')}` : ''}</h2>${barre(niveau(d, k), false, d, k)}
+    ${!courante ? `<div class="alerte info petit" style="margin-top:8px">${finie ? '📦 Période terminée : ces appels sont gardés pour mémoire.' : '🔜 Période à venir : tu peux déjà chercher, les entreprises choisies maintenant sont comptées pour cette période.'}</div>` : ''}${courante && progressionRecherche(S.el) ? `<p class="petit" style="margin:8px 0 0">${progressionRecherche(S.el)}</p>` : ''}
     <p class="doux" style="margin-top:8px">Ouvre la « fiche d’appel » avant de téléphoner : ton memento s’affiche à côté, et tu notes qui tu as eu, la réponse et la suite à donner.</p>
     <div class="actions"><button class="btn sec" data-a="aller" data-v="entreprises">🏢 Choisir d’autres entreprises</button><button class="btn sec" data-a="ajoutManuel">➕ Ajouter une entreprise</button></div></section>
-  ${l.length ? [...l].reverse().map(x => carteDemande(x)).join('') : '<section class="carte"><p>Tu n’as encore sélectionné aucune entreprise.</p></section>'}`;
+  ${l.length ? [...l].reverse().map(x => carteDemande(x)).join('') : `<section class="carte"><p>${ps.length > 1 ? 'Aucune entreprise pour cette période.' : 'Tu n’as encore sélectionné aucune entreprise.'}</p></section>`}`;
 }
 function blocMemento(m) {
   const vide = !CHAMPS.memento.some(([k]) => (m[k] || '').trim());

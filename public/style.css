@@ -398,3 +398,19 @@ header.top nav.nav-eleve ~ .qui { margin-left: auto; }
 .barre-pc { grid-area: pc; font-size: .8rem; text-align: right; }
 .barre-txt { grid-area: txt; line-height: 1.25; }
 .barre-ligne.sans .barre-txt, .barre-ligne.sans > .petit { grid-area: txt; }
+
+/* ---------- Périodes de stage séparées ---------- */
+.onglets-periodes { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+.onglets-periodes button { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; text-align: left; font: inherit; cursor: pointer; padding: 10px 14px; border-radius: 12px; border: 2px solid #e5e7eb; background: #fff; color: inherit; min-width: 180px; }
+.onglets-periodes button.actif { border-color: #2563eb; background: #eff6ff; box-shadow: 0 2px 10px rgba(37,99,235,.15); }
+.mini-niv { color: #fff; font-size: .72rem; font-weight: 700; border-radius: 999px; padding: 1px 8px; }
+.periodes-liste { display: grid; gap: 8px; }
+.periode-ligne { display: grid; grid-template-columns: minmax(200px, 1.3fr) minmax(180px, 1fr) auto; gap: 12px; align-items: center; padding: 10px 12px; border: 1px solid #e5e7eb; border-radius: 10px; }
+.periode-ligne.ici { border-color: #2563eb; background: #f5f8ff; }
+@media (max-width: 700px) { .periode-ligne { grid-template-columns: 1fr; } }
+.titre-periode { margin: 18px 0 8px; padding-top: 10px; border-top: 2px solid #e5e7eb; }
+.titre-periode:first-child { margin-top: 0; border-top: 0; padding-top: 0; }
+.titre-periode h3 { margin: 0 0 6px; }
+fieldset.c_refs { border: 1px solid #e5e7eb; border-radius: 10px; padding: 8px 12px; margin: 0; }
+fieldset.c_refs legend { font-weight: 600; font-size: .88rem; padding: 0 4px; }
+fieldset.c_refs label { display: inline-flex; align-items: center; gap: 6px; margin: 4px 14px 4px 0; font-weight: 400; }

@@ -21,7 +21,7 @@ function nbSemaines(du, au) {
 }
 function initProtocole(demandeId) {
   const d = S.el, dt = datesEleve(d), cl = S.classes.find(c => c.id === d.profil.classeId);
-  const referent = cl && cl.referentId ? S.profs.find(p => p.id === cl.referentId) : null;
+  const referent = S.profs.find(p => p.id === referentsDe(cl)[0]) || null;
   const eleve = PROTO ? PROTO.eleve : {
     nom: '', prenom: d.profil.prenom || '', naissance: '', classe: cl ? cl.nom : '', adresse: '', telEleve: '', telRepresentants: '',
     referent: referent ? nomComplet(referent) : '', du: dt ? dt.debut : '', au: dt ? dt.fin : '', semaines: dt ? nbSemaines(dt.debut, dt.fin) : '',
@@ -60,7 +60,7 @@ async function memoriserPartieEntreprise() {
 function vueProtocole() {
   if (!PROTO) initProtocole();
   const P = PROTO, liste = demandesPourProtocole(), cl = S.classes.find(c => c.id === S.el.profil.classeId);
-  const referent = cl && cl.referentId ? S.profs.find(p => p.id === cl.referentId) : null;
+  const referent = S.profs.find(p => p.id === referentsDe(cl)[0]) || null;
   const champ = (pref, [k, l, , , , type], v) => `<label>${l}<input id="${pref}_${k}" ${type === 'date' ? 'type="date"' : type === 'email' ? 'type="email"' : ''} value="${esc(v[k] || '')}"></label>`;
   const heure = id => `<input type="time" id="${id}" value="${esc(P.horaires[id.slice(3)] || '')}" aria-label="${id}">`;
   return `<section class="carte"><h2>📝 Protocole d’accord</h2>

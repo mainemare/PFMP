@@ -41,10 +41,10 @@ const AVANCEMENT = {
     return [Math.min(100, 34 + 33 * n), n ? `${n} commune(s) de résidence${n < 2 ? ' : ajoutes-en une 2e' : ''}` : 'indique tes communes de résidence']; },
   memento: d => { const m = d.memento; if (m.valide) return [100, 'validé par ton professeur'];
     const n = CHAMPS.memento.filter(([k]) => String(m[k] || '').trim()).length; return [Math.round(n / CHAMPS.memento.length * 90), `${n}/${CHAMPS.memento.length} parties remplies`]; },
-  entreprises: d => { const n = d.demandes.liste.length; return [Math.min(100, Math.round(n / SEUIL_ACTIVE * 100)), `${n} entreprise(s) sélectionnée(s) · objectif ${SEUIL_ACTIVE}`]; },
+  entreprises: d => { const n = demandesP(d).length; return [Math.min(100, Math.round(n / SEUIL_ACTIVE * 100)), `${n} entreprise(s) sélectionnée(s) · objectif ${SEUIL_ACTIVE}`]; },
   suivi: d => { if (niveau(d) >= 3) return [100, NIV[niveau(d)].l]; const n = nbContactees(d);
     return [Math.min(95, Math.round(n / SEUIL_TRES_ACTIVE * 100)), `${n} entreprise(s) contactée(s) · objectif ${SEUIL_TRES_ACTIVE}`]; },
-  protocole: d => { const n = niveau(d), l = d.demandes.liste;
+  protocole: d => { const n = niveau(d), l = demandesP(d);
     if (n >= 4) return [100, n >= 5 ? 'convention signée' : 'protocole signé'];
     if (l.some(x => x.protocole && x.protocole.soumisLe)) return [75, 'envoyé au professeur référent'];
     if (l.some(x => x.protocole)) return [40, 'commencé'];
