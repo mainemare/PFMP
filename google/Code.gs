@@ -557,13 +557,16 @@ function memoriserInfosEntreprise(entrepriseId, infos) {
 function routesProtosig(route, b, user) {
   const id = String(b.id || ''), cle = 'protosig/' + id;
   if (route === 'POST /api/protosig/creer') {
-    if (!user || user.role !== 'eleve') return ko(403, 'interdit');
-    const chiffre = String(b.chiffre || ''), heures = [24, 48, 72].indexOf(+b.heures) >= 0 ? +b.heures : 48;
+    if (!user) return ko(403, 'interdit');
+    // Eleve (protocole, attestation) ou professeur qui voit l'eleve (fiche d'evaluation envoyee au tuteur)
+    const pourEleve = user.role === 'eleve' ? user.id : String(b.eleveId || '');
+    if (user.role !== 'eleve' && (!/^[a-f0-9]{12}$/.test(pourEleve) || !voitEleve(user, pourEleve))) return ko(403, 'interdit');
+    const chiffre = String(b.chiffre || ''), heures = [24, 48, 72, 168].indexOf(+b.heures) >= 0 ? +b.heures : 48;
     if (!chiffre || chiffre.length > 3500000) return ko(413, 'trop_gros');
     purgerProtosig();
     const nouvel = hasard(16), fichier = ecrireFichierConv(null, 'protocole-signature-' + nouvel + '.json', { chiffre: chiffre, sig: null });
     const entrepriseId = /^[A-Za-z0-9_-]{1,40}$/.test(String(b.entrepriseId || '')) ? String(b.entrepriseId) : null;
-    const m = { eleveId: user.id, entrepriseId: entrepriseId, cree: Date.now(), expire: Date.now() + heures * 3600 * 1000, fichier: fichier, signe: null };
+    const m = { eleveId: pourEleve, createurId: user.id, entrepriseId: entrepriseId, cree: Date.now(), expire: Date.now() + heures * 3600 * 1000, fichier: fichier, signe: null };
     setDoc('protosig/' + nouvel, JSON.stringify(m));
     return ok({ id: nouvel, expire: new Date(m.expire).toISOString() });
   }
@@ -584,7 +587,7 @@ function routesProtosig(route, b, user) {
     if (m.entrepriseId && b.infos && typeof b.infos === 'object') memoriserInfosEntreprise(m.entrepriseId, b.infos);
     return ok({ ok: true });
   }
-  if (!user || user.role !== 'eleve' || user.id !== m.eleveId) return ko(403, 'interdit');
+  if (!user || (user.id !== m.eleveId && user.id !== m.createurId)) return ko(403, 'interdit');
   if (route === 'POST /api/protosig/etat') {
     return ok({ signe: m.signe, expire: new Date(m.expire).toISOString(), sig: m.signe ? lireFichierConv(m.fichier).sig : null });
   }

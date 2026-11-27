@@ -165,6 +165,8 @@ function vueFinStage() {
       : pfCommence ? `<p>Note indicative : <b>${fmtNote(auto)} / 20</b> <span class="petit doux">(calcul automatique, en attente de la note de ton professeur)</span></p>`
       : '<p>⬜ Pas encore commencé.</p>'}
     <div class="actions"><button class="btn sec" data-a="aller" data-v="portfolio">Ouvrir mon portfolio</button></div>
+    <h3>🧑‍🔧 Évaluation en entreprise <span class="petit doux">(grille remplie par ton tuteur et ton professeur)</span></h3>
+    ${k ? blocEvalEleve(d, k) : '<p class="doux">Les dates de stage ne sont pas encore fixées.</p>'}
   </section>
   ${blocAttestation(d, k)}</div>`;
 }

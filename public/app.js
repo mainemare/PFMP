@@ -246,6 +246,7 @@ function render() {
   if (!prof && S.vue === 'cv' && $('#cv_apercu')) majApercuCV().catch(e => toast(e.message, true));
   if (!prof && S.vue === 'lettre' && $('#lm_apercu')) majApercuLettre().catch(e => toast(e.message, true));
   if (prof && S.vue === 'carte' && !S.dossier) afficherCarteProf();
+  if (prof && S.dossier && S.onglet === 'evaluation' && typeof brancherEvalProf === 'function') brancherEvalProf();
 }
 function entete(prof) {
   let nav;

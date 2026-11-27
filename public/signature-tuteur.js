@@ -68,7 +68,8 @@ async function init() {
   try { r = await api('/api/protosig/lire', { id: P.p }); } catch (e) { return message('Lien indisponible', esc(e.message)); }
   try { E.d = await CONV.dechiffrer(r.chiffre, P.k); } catch { return message('Lien incomplet', 'Le lien a été coupé : ouvrez-le en entier, ou demandez à l’élève de vous le renvoyer.'); }
   const fin = new Date(r.expire).toLocaleString('fr-FR', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' });
-  if (E.d.att) return afficherAttestation(fin);   // attestation de stage (fin de stage)
+  if (E.d.att) return afficherAttestation(fin);
+  if (E.d.evalE3) return afficherEvaluation(fin);   // fiche d'évaluation du stage (grille E3)   // attestation de stage (fin de stage)
   if (!E.d.proto) return afficherAncienLien(fin);   // lien créé par une version précédente : PDF déjà rempli
   E.proto = E.d.proto;
   const ent = E.proto.ent || {}, h = E.proto.horaires || {}, jours = E.proto.jours || { lundi: true, mardi: true, mercredi: true, jeudi: true, vendredi: true };
@@ -245,6 +246,45 @@ async function signerAtt() {
     await api('/api/protosig/signer', { id: P.p, sig, infos: { adresse: r.adresse, siret: r.siret, signataire: r.representant, fonctionSignataire: r.fonction } });
     message('✅ Merci !', `L’attestation complétée et signée a bien été transmise à ${esc(E.d.eleve)} et au lycée. Vous pouvez fermer cette page.`);
   } catch (e) { toast(e.message, true); bouton.disabled = false; bouton.textContent = '✅ Valider et signer l’attestation'; }
+}
+
+/* ===== Fiche d'évaluation du stage (grille E3) : le tuteur complète la grille puis signe ===== */
+function afficherEvaluation(fin) {
+  const x = E.d.evalE3, ev = Object.assign(nouvelleEval(), x.ev || {});
+  E.ev = ev;
+  $('#app').innerHTML = `<section class="carte"><h1 style="margin-top:0">Fiche d’évaluation du stage</h1>
+      <p>Le lycée Raymond Queneau vous demande d’évaluer le stage de <b>${esc(E.d.eleve)}</b>${E.d.classe ? ` (${esc(E.d.classe)})` : ''}${E.d.entreprise ? ` chez <b>${esc(E.d.entreprise)}</b>` : ''}, période n° ${esc(x.numero || '')} du ${esc(dateAtt(x.debut))} au ${esc(dateAtt(x.fin))}.</p>
+      <ol class="petit"><li>Pour chaque critère observé, touchez le niveau atteint : <b>-</b> pas de réussite ou non fait, <b>+</b> réussite partielle, <b>++</b> réussite totale avec aide, <b>+++</b> réussite totale en autonomie. Laissez vide ce qui n’a pas pu être observé.</li>
+        <li>La note de chaque compétence est proposée d’après les critères ; vous pouvez l’ajuster.</li><li>Cochez les attitudes professionnelles, écrivez une courte synthèse, puis signez.</li></ol>
+      <p class="doux petit">Lien valable jusqu’au ${esc(fin)}, utilisable une seule fois. Toutes les compétences ne peuvent pas être évaluées pendant un stage.</p></section>
+    <section class="carte" id="grille">${grilleEvalHTML(ev, false)}</section>
+    <section class="carte"><h2>Signature du tuteur et cachet de l’entreprise</h2>
+      <div class="deux"><label>Nom et prénom du tuteur<input id="nom" autocomplete="name"></label><label>Fonction<input id="fonction" placeholder="Tuteur, chef d’équipe, gérant…"></label></div>
+      <div class="onglets"><button type="button" id="m_pad" class="actif">✍️ Signer sur l’écran</button><button type="button" id="m_photo">📷 Photo de la signature</button></div>
+      <div id="zoneSig"></div>
+      <h3 class="petit" style="margin:14px 0 4px">Tampon (cachet) de l’entreprise <span class="doux">(photo, facultatif)</span></h3>
+      <div id="zoneCachet"></div>
+      <div class="actions"><button class="btn sec" id="telecharger">⬇️ Télécharger la fiche</button><button class="btn" id="signer">✅ Valider et signer l’évaluation</button></div>
+      <p class="doux petit">🔒 Votre évaluation et votre signature sont chiffrées sur cet appareil et transmises au professeur référent.</p></section>`;
+  brancherGrilleEval($('#grille'), ev);
+  $('#m_pad').onclick = () => modeSig('pad'); $('#m_photo').onclick = () => modeSig('photo');
+  $('#telecharger').onclick = async () => { try { const o = await fabriquerPdfEvaluation({ ev, eleve: E.d.eleveInfo || {}, numero: x.numero, debut: x.debut, fin: x.fin, session: x.session, entreprise: E.d.entreprise });
+    const l = document.createElement('a'); l.href = URL.createObjectURL(new Blob([o], { type: 'application/pdf' })); l.download = 'Fiche d’évaluation.pdf'; document.body.append(l); l.click(); l.remove(); } catch (e) { toast(e.message, true); } };
+  $('#signer').onclick = signerEvaluation;
+  modeSig('pad'); zoneCachet();
+}
+async function signerEvaluation() {
+  const nom = $('#nom').value.trim(), fonction = $('#fonction').value.trim(), bouton = $('#signer');
+  if (!noteEval(E.ev).n) return toast('Évaluez au moins une compétence.', true);
+  if (!nom) return toast('Indiquez votre nom.', true);
+  if (E.mode === 'pad') { if (!E.pad || E.pad.vide()) return toast('Signez dans le cadre.', true); E.img = E.pad.image(); }
+  if (!E.img) return toast('Ajoutez la photo de votre signature.', true);
+  bouton.disabled = true; bouton.textContent = 'Envoi…';
+  try {
+    const sig = await CONV.chiffrer({ ev: E.ev, img: E.img, cachet: E.cachet, nom, fonction, date: new Date().toISOString() }, P.k);
+    await api('/api/protosig/signer', { id: P.p, sig });
+    message('✅ Merci !', 'Votre évaluation signée a bien été transmise au professeur référent. Vous pouvez fermer cette page.');
+  } catch (e) { toast(e.message, true); bouton.disabled = false; bouton.textContent = '✅ Valider et signer l’évaluation'; }
 }
 
 init();

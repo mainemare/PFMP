@@ -425,3 +425,25 @@ header.top nav.nav-eleve ~ .qui { margin-left: auto; }
 fieldset.c_refs { border: 1px solid #e5e7eb; border-radius: 10px; padding: 8px 12px; margin: 0; }
 fieldset.c_refs legend { font-weight: 600; font-size: .88rem; padding: 0 4px; }
 fieldset.c_refs label { display: inline-flex; align-items: center; gap: 6px; margin: 4px 14px 4px 0; font-weight: 400; }
+
+/* ---------- Grille d'évaluation E3 ---------- */
+.ev-legende { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 6px 0 10px; }
+.ev-legende .ev-ess { color: #b91c1c; font-weight: 700; }
+.ev-activite { margin: 16px 0 6px; padding: 4px 8px; background: #fde4d0; border-radius: 6px; text-transform: uppercase; font-size: .82rem; letter-spacing: .03em; }
+.ev-comp-bloc { border: 1px solid #f3c9a8; border-radius: 10px; margin: 8px 0; overflow: hidden; }
+.ev-comp-tete { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; padding: 8px 10px; background: #fff4ec; }
+.ev-comp-tete b { flex: 1 1 260px; font-size: .9rem; }
+.ev-comp-tete select { width: auto; min-width: 170px; margin: 0; }
+.ev-table { width: 100%; border-collapse: collapse; }
+.ev-table td { border-top: 1px solid #f1e3d8; padding: 5px 8px; font-size: .86rem; vertical-align: middle; }
+.ev-table td.ev-e { color: #b91c1c; font-weight: 700; }
+.ev-choix { white-space: nowrap; width: 1%; }
+.ev-n { min-width: 38px; padding: 5px 6px; margin: 1px; border: 1px solid #cbd5e1; border-radius: 6px; background: #fff; font: inherit; font-weight: 700; cursor: pointer; }
+.ev-n.on { background: #1d4ed8; border-color: #1d4ed8; color: #fff; }
+.ev-n:disabled { cursor: default; opacity: .75; }
+@media (max-width: 640px) { .ev-table tr { display: grid; } .ev-choix { width: auto; padding-top: 0 !important; border-top: 0 !important; } }
+.ev-ap { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
+.ev-ap fieldset { border: 1px solid #f3c9a8; border-radius: 10px; padding: 6px 10px; margin: 0; }
+.ev-ap legend { font-weight: 700; font-size: .85rem; }
+.ev-ap label { display: flex; gap: 6px; align-items: center; margin: 3px 0; font-weight: 400; }
+.ev-total { position: sticky; bottom: 0; background: #eef2ff; border: 1px solid #c7d2fe; border-radius: 10px; padding: 10px 12px; margin-top: 10px; font-size: 1.02rem; z-index: 2; }

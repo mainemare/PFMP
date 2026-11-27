@@ -97,8 +97,10 @@ function vueDossier() {
   { const pf = d.prof.portfolio, aValider = d.portfolio && (d.portfolio.raison || d.portfolio.cdc) && (!pf || !pf.valide || String(d.portfolio.majLe) > String(pf.date));
     onglets.splice(onglets.findIndex(o => o[0] === 'memento'), 0, ['portfolio', `Portfolio${pf && pf.valide ? ` (${String(pf.total).replace('.', ',')}/20)` : aValider ? ' 🟣' : ''}`]); }
   { const pa = Object.values((d.attestation && d.attestation.periodes) || {}); onglets.splice(onglets.findIndex(o => o[0] === 'conseils'), 0, ['attestation', `Attestation${pa.some(x => x.fichierLe && !x.valide) ? ' 🟣' : pa.some(x => x.valide) ? ' ✅' : ''}`]); }
+  { const evs = Object.values((d.prof && d.prof.evaluations) || {}), v = evs.filter(x => x.valide).map(x => noteEval(x)).filter(x => x.n).pop();
+    onglets.splice(onglets.findIndex(o => o[0] === 'attestation') + 1, 0, ['evaluation', `Évaluation${v ? ` (${fmtN(v.sur20)}/20)` : evs.length ? ' ✏️' : ''}`]); }
   if (S.onglet === 'bord' && S.user.role === 'ddfpt') S.onglet = 'synthese';
-  const corps = { synthese: dosSynthese, suivi: dosSuivi, cv: () => dosDoc(e, 'cv'), lettre: () => dosDoc(e, 'lettre'), memento: () => dosDoc(e, 'memento'), attestation: dosAttestation, conseils: dosConseils, activite: dosActivite, bord: dosBord, portfolio: dosPortfolio }[S.onglet](e);
+  const corps = { synthese: dosSynthese, suivi: dosSuivi, cv: () => dosDoc(e, 'cv'), lettre: () => dosDoc(e, 'lettre'), memento: () => dosDoc(e, 'memento'), attestation: dosAttestation, evaluation: dosEvaluation, conseils: dosConseils, activite: dosActivite, bord: dosBord, portfolio: dosPortfolio }[S.onglet](e);
   return `<div class="overlay" data-a="fond" data-dossier="1"><div class="fenetre large" role="dialog" aria-modal="true"><button class="fermer" data-a="fermerDossier" aria-label="Fermer">✕</button>
     <div class="dossier-tete" style="--c:${NIV[n].c}"><h2>${esc(nomEleve(e))} <span class="badge" style="background:${esc(cl ? cl.couleur : '#64748b')}">${esc(cl ? cl.nom : 'Sans classe')}</span>
       ${enUrgence(d) ? '<span class="badge urg">🚨 PLAN D’URGENCE</span>' : ''}</h2>${barre(n, false, d)}

@@ -312,3 +312,16 @@ Limites
     L'attestation signee (PDF) est fabriquee sur l'appareil de l'eleve et rangee dans le dossier prive du Drive.
     Signature papier toujours possible : l'eleve depose une photo ou un PDF.
   Mise en place : mettez a jour Code.gs puis Deployer > Gerer les deploiements > (crayon) > Nouvelle version.
+
+21. FICHE D'EVALUATION DU STAGE (GRILLE E3 MELEC) ET JOURS INDEMNISES
+  - Dossier de l'eleve, onglet « Evaluation » : une fiche par periode (grille du lycee : 13 competences, criteres essentiels
+    en rouge, attitudes professionnelles AP1 a AP5, synthese). Bareme : - (0 a 3), + (4 a 6), ++ (6 a 7), +++ (8 a 10).
+    La note de chaque competence est proposee d'apres les criteres coches, et reste modifiable.
+    Note sur 20 = points ponderes (C1 18, C2 25,2, C3 12, C4 42, C5 14, C6 14, C7 14, C8 28, C9 12, C10 18, C11 12,
+    C12 16,8, C13 14 ; total 240) calcules sur les seules competences evaluees.
+  - Avec le tuteur pendant la visite, ou a distance : lien par SMS (jusqu'a 7 jours) ; le tuteur complete la grille, signe
+    et ajoute le cachet ; la fiche revient chez le professeur, qui l'ajuste puis la valide. L'eleve voit sa note et peut
+    telecharger sa fiche (PDF) une fois validee. Seul un professeur referent de l'eleve peut creer ce lien.
+  - Jours indemnises (onglet Attestation) : calcul automatique (jours declares par l'entreprise, limites aux jours
+    completes dans le journal de bord) ou derogation du professeur avec motif, visible par l'eleve.
+  Mise en place : mettez a jour Code.gs puis Deployer > Gerer les deploiements > (crayon) > Nouvelle version.
