@@ -369,12 +369,13 @@ function tableEnt() {
 I.qEnt = el => { S.qEnt = el.value; $('#tableEnt').innerHTML = tableEnt(); };
 C.secteurBase = el => { choisirSecteur(el.value); $('#tableEnt').innerHTML = tableEnt(); };
 // Dossier élève : la liste « Proposer une entreprise » se filtre par secteur et se trie par distance de l'élève.
-function optionsProposer(e, champ = 'k_secteur') {
-  const sect = $('#' + champ) ? $('#' + champ).value : S.secteurBase;
-  const l = S.entreprises.filter(x => !sect || x.secteur === sect)
+const simplifierNom = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+function optionsProposer(e, champ = 'k_secteur', q = '') {
+  const sect = $('#' + champ) ? $('#' + champ).value : S.secteurBase, mots = simplifierNom(q).split(/\s+/).filter(Boolean);
+  const l = S.entreprises.filter(x => (!sect || x.secteur === sect) && mots.every(m => simplifierNom([x.nom, x.adresse].join(' ')).includes(m)))
     .map(x => ({ x, km: (plusProche(e.d, x) || {}).km }))
     .sort((a, b) => (a.km ?? 1e9) - (b.km ?? 1e9) || a.x.nom.localeCompare(b.x.nom, 'fr')).slice(0, 300);
-  return `<option value="">— Choisir (${l.length}${l.length === 300 ? ' plus proches' : ''}) —</option>${l.map(({ x, km }) => `<option value="${x.id}">${esc(x.nom)}${x.secteur && !sect ? ` (${esc(x.secteur)})` : ''}${km != null ? ` — ${km.toFixed(1)} km` : ''}</option>`).join('')}`;
+  return `<option value="">${!l.length && mots.length ? '— Aucune entreprise trouvée : saisissez-la ci-dessous —' : `— Choisir (${l.length}${l.length === 300 ? ' plus proches' : ''}) —`}</option>${l.map(({ x, km }) => `<option value="${x.id}">${esc(x.nom)}${x.secteur && !sect ? ` (${esc(x.secteur)})` : ''}${km != null ? ` — ${km.toFixed(1)} km` : ''}</option>`).join('')}`;
 }
 C.secteurProposer = el => { choisirSecteur(el.value); $('#k_ent').innerHTML = optionsProposer(eleveOuvert()); };
 // Import d'un fichier préparé (liste déjà localisée) : ajoute les entreprises absentes de la base.
@@ -731,6 +732,7 @@ function blocPriseEnMain(e) {
   const ps = periodesEleve(e.d), act = periodeActive(e.d);
   return `<details class="prise-main"><summary>👩‍🏫 Ajouter une entreprise pour l’élève <span class="petit doux">(s’il ne fait pas sa recherche)</span></summary>
     <p class="petit doux">L’entreprise est ajoutée directement à ses appels (il la voit dans « Mes appels », avec votre nom). Choisissez « Accord – protocole signé » ou « Convention signée » si c’est déjà réglé : le protocole est alors validé sans document.</p>
+    <label>🔍 Rechercher une entreprise par son nom <span class="doux petit">(ou sa commune)</span><input id="ka_q" type="search" data-i="cherchePrise" placeholder="ex. Dupont, électricité, Yvetot…" autocomplete="off"></label>
     <div class="deux"><label>Secteur<select id="ka_secteur" data-c="secteurPrise">${optionsSecteur(S.secteurBase)}</select></label>
       <label>Entreprise de la base<select id="ka_ent">${optionsProposer(e, 'ka_secteur')}</select></label></div>
     <details style="margin-bottom:12px"><summary>…ou saisir une nouvelle entreprise (ajoutée aussi à la base)</summary>
@@ -740,7 +742,13 @@ function blocPriseEnMain(e) {
       <label>Où en est-on ?<select id="ka_statut">${Object.entries(STATUTS).map(([k, [l]]) => `<option value="${k}">${l}</option>`).join('')}</select></label></div>
     <div class="actions"><button class="btn" data-a="priseAjouter">➕ Ajouter à ses appels</button></div></details>`;
 }
-C.secteurPrise = el => { choisirSecteur(el.value); $('#ka_ent').innerHTML = optionsProposer(eleveOuvert(), 'ka_secteur'); };
+function majChoixPrise() {
+  const q = val('ka_q'), s = $('#ka_ent'); s.innerHTML = optionsProposer(eleveOuvert(), 'ka_secteur', q);
+  // Une recherche qui ne donne qu'une entreprise la sélectionne directement
+  if (q && s.options.length === 2) s.selectedIndex = 1;
+}
+C.secteurPrise = el => { choisirSecteur(el.value); majChoixPrise(); };
+I.cherchePrise = () => majChoixPrise();
 const validationSansDoc = () => ({ avis: 'favorable', motif: 'Validé par le professeur sans protocole rempli dans l’application', sansDoc: true, date: maintenant(), par: nomComplet(S.user), parId: S.user.id });
 // Statut « protocole » ou « convention » posé par le professeur : protocole validé (sans document), et convention confirmée.
 async function forcerStatut(e, id, statut) {
