@@ -221,7 +221,7 @@ async function traiter(req, res) {
     return envoyer(req, res, 200, userJson(user));
   }
   // L'envoi d'e-mails n'existe que dans la version Google (google/Code.gs) : l'eleve telecharge alors son PDF.
-  if (route === 'POST /api/protocole/envoyer') return erreur(req, res, 501, 'envoi_indisponible');
+  if (route === 'POST /api/protocole/envoyer' || route === 'POST /api/visite/notifier') return erreur(req, res, 501, 'envoi_indisponible');
   // Conventions chiffrees et signatures : uniquement dans la version Google (google/Code.gs).
   if (chemin.startsWith('/api/convention') || route === 'POST /api/moi/chef') return erreur(req, res, 501, 'convention_indisponible');
   // CV et lettres en PDF : seulement avec la version Google (rangement dans le Drive).

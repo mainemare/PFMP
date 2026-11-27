@@ -350,3 +350,12 @@ Limites
   - Ranges a part (eleve/<id>/suiviprof) : seuls les professeurs referents de la classe et le DDFPT les lisent et les ecrivent.
     L'eleve et un professeur seulement charge de la visite n'y ont pas acces (controle par le serveur).
   Mise en place : mettez a jour Code.gs puis Deployer > Gerer les deploiements > (crayon) > Nouvelle version.
+
+25. PREVENIR LE TUTEUR ET L'ELEVE D'UNE VISITE
+  - Fenetre d'une visite (page « Visites ») : cadre « Prevenir de la visite » avec « E-mail au tuteur » (adresse reprise du
+    protocole d'accord, modifiable) et « E-mail a l'eleve » (adresse facultative de son profil, jamais montree au professeur).
+  - Les e-mails partent du compte Google qui a deploye le script (MailApp), au nom du professeur ; la reponse arrive dans la
+    boite du professeur s'il a indique son adresse dans « Mon profil ». Une visite annulee envoie un message d'annulation.
+  - SMS : apres l'enregistrement, « SMS au tuteur » / « SMS a l'eleve » ouvre l'application SMS du telephone du professeur avec
+    le message deja redige (gratuit, rien n'est envoye par le lycee). Le numero de l'eleve n'est jamais conserve.
+  Mise en place : mettez a jour Code.gs puis Deployer > Gerer les deploiements > (crayon) > Nouvelle version.

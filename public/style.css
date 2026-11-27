@@ -525,6 +525,13 @@ details.vis-classe > summary { display: flex; flex-wrap: wrap; gap: 6px 12px; al
 details.vis-classe[open] > summary { border-bottom: 1px solid var(--trait); border-radius: 12px 12px 0 0; }
 details.vis-classe > summary b { font-size: 1.05rem; }
 details.vis-classe > .table-scroll { padding: 4px 10px 10px; }
+/* ---------- Prévenir de la visite ---------- */
+fieldset.prevenir { border: 1px solid #bfdbfe; border-radius: 10px; background: #eff6ff; padding: 8px 12px 10px; margin: 10px 0; }
+fieldset.prevenir legend { font-weight: 700; color: #1e3a8a; padding: 0 4px; }
+fieldset.prevenir .case { display: flex; gap: 8px; align-items: center; font-weight: 600; margin: 6px 0 2px; }
+fieldset.prevenir .case input { width: auto; margin: 0; }
+.sms-bloc { border: 1px solid var(--trait); border-radius: 10px; padding: 10px 12px; margin: 10px 0; background: #f8fafc; }
+.sms-bloc textarea { width: 100%; margin-top: 6px; }
 /* ---------- Commentaires de suivi des professeurs ---------- */
 .suivi-demande { margin: -6px 0 16px; padding: 10px 12px; border: 1px solid #fde68a; border-left: 5px solid #ca8a04; border-radius: 10px; background: #fffbeb; }
 .suivi-demande .tete-suivi { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; }

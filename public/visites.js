@@ -191,11 +191,13 @@ function modalVisite(id, date, eleveId) {
     </div>
     <label id="v_lien_l" ${v.mode === 'visio' ? '' : 'hidden'}>Lien de la visio<input id="v_lien" value="${esc(v.lien)}" placeholder="https://…"></label>
     <label>Message pour l’élève <span class="doux petit">(facultatif, visible par l’élève)</span><input id="v_message" value="${esc(v.message || '')}" placeholder="Prévenir ton tuteur, apporter ton carnet de suivi…"></label>
+    ${blocPrevenir(eid, !t)}
+    ${v.prevenuLe ? `<p class="petit">📣 Prévenu le ${fmtDT(v.prevenuLe.date)} : ${[v.prevenuLe.tuteur && 'tuteur par e-mail', v.prevenuLe.eleve && 'élève par e-mail'].filter(Boolean).join(', ') || 'aucun e-mail envoyé'}.</p>` : ''}
     <div class="actions"><button class="btn" data-a="agSauver" data-id="${esc(v.id)}">Enregistrer</button>
       ${t ? `<a class="btn sec" href="${esc(itineraire(lieuVisite(t.e, v)))}" target="_blank" rel="noopener" ${v.mode === 'visio' ? 'hidden' : ''}>🧭 Itinéraire</a><button class="btn danger" data-a="agSupprimer" data-id="${v.id}">Supprimer</button>` : ''}</div>
     <p class="doux petit">L’élève voit la date, l’heure, le lieu (ou le lien de la visio) et votre message.</p>`);
 }
-C.agEleve = el => { $('#v_info').innerHTML = infoEntreprise(el.value); };
+C.agEleve = el => { $('#v_info').innerHTML = infoEntreprise(el.value); const t = tuteurDe(S.eleves.find(x => x.id === el.value)); if ($('#v_mtut')) $('#v_mtut').value = t.mail; };
 C.agBascule = () => {
   const mode = ($('input[name="v_mode"]:checked') || {}).value, lieu = ($('input[name="v_lieu"]:checked') || {}).value;
   $('#v_terrain').hidden = mode === 'visio'; $('#v_lien_l').hidden = mode !== 'visio'; $('#v_adr_l').hidden = lieu !== 'autre';
@@ -218,7 +220,10 @@ A.agSauver = async el => {
     const avant = JSON.stringify(S.perso.frais[v.id] || {});
     if (Object.values(fr).some(Boolean) || avant !== '{}') if (JSON.stringify(fr) !== avant) await mutPerso(p => { p.frais[v.id] = fr; });
   }
-  S.agMois = date.slice(0, 7); modal(''); render(); toast('Visite enregistrée : l’élève la voit sur son accueil');
+  S.agMois = date.slice(0, 7);
+  const avertir = v.statut !== 'faite' && ($('#v_ntut') || {}).checked, avertirEl = v.statut !== 'faite' && ($('#v_nel') || {}).checked, mtut = $('#v_mtut') ? val('v_mtut').trim() : '';
+  modal(''); render(); toast('Visite enregistrée : l’élève la voit sur son accueil');
+  if (v.statut !== 'faite') await prevenirVisite(e, v, avertir ? mtut : '', avertirEl);
 };
 A.agSupprimer = async el => {
   const t = trouverVisite(el.dataset.id); if (!t || !confirm('Supprimer cette visite ?')) return;
@@ -549,3 +554,57 @@ C.visiteur = async el => {
   render(); toast(pid ? `Visite de ${nomEleve(e)} attribuée à ${pid === S.user.id ? 'vous' : nomProf(pid)}` : 'Attribution retirée');
 };
 C.visMoi = el => { S.visMoi = el.checked; render(); };
+
+/* ---------- Prévenir le tuteur et l'élève de la visite : e-mail automatique, SMS depuis le téléphone du professeur ---------- */
+// Tuteur de l'entreprise du stage : coordonnées du protocole d'accord.
+function tuteurDe(e) {
+  if (!e) return { nom: '', mail: '', tel: '' };
+  const x = ['convention', 'protocole', 'rdv'].map(s => e.d.demandes.liste.find(y => y.statut === s)).find(Boolean), n = (x && x.protocole && x.protocole.ent) || {};
+  return { nom: n.tuteur || (x && x.interlocuteur) || '', mail: n.mailTuteur || '', tel: n.telTuteur || '' };
+}
+function blocPrevenir(eid, nouvelle) {
+  const tu = tuteurDe(S.eleves.find(x => x.id === eid));
+  return `<fieldset class="prevenir"><legend>📣 Prévenir de la visite</legend>
+    <label class="case"><input type="checkbox" id="v_ntut" ${nouvelle ? 'checked' : ''}>E-mail au tuteur</label>
+    <label class="petit" style="margin:2px 0 8px 26px">Adresse du tuteur <span class="doux">(reprise du protocole, modifiable)</span><input id="v_mtut" type="email" value="${esc(tu.mail)}" placeholder="tuteur@entreprise.fr"></label>
+    <label class="case"><input type="checkbox" id="v_nel" ${nouvelle ? 'checked' : ''}>E-mail à l’élève <span class="doux petit">(s’il a enregistré une adresse dans son profil)</span></label>
+    <p class="doux petit" style="margin:6px 0 0">Après l’enregistrement, vous pourrez aussi envoyer un SMS depuis votre téléphone (message déjà rédigé). Pensez à cocher de nouveau si vous changez la date ou l’heure.</p></fieldset>`;
+}
+const quandVisite = v => `${jourLong(v.date)}${v.heure ? ' à ' + v.heure.replace(':', ' h ') : ''}`;
+const ouVisite = v => v.mode === 'visio' ? `en visio${lienSur(v.lien) ? ' : ' + lienSur(v.lien) : ''}` : v.lieu === 'autre' ? `à l’adresse : ${v.adresse}` : `dans l’entreprise${v.entreprise ? ' ' + v.entreprise.nom : ''}`;
+function texteSmsVisite(e, v, pour) {
+  const ann = v.statut === 'annulee', prof = v.profNom || nomComplet(S.user);
+  if (pour === 'eleve') return ann ? `Bonjour ${e.d.profil.prenom}, la visite de stage du ${quandVisite(v)} est annulée. ${prof}` : `Bonjour ${e.d.profil.prenom}, je viendrai te voir en stage le ${quandVisite(v)}, ${ouVisite(v)}. Préviens ton tuteur. ${prof}`;
+  return ann ? `Bonjour, la visite de stage de ${nomEleve(e)} prévue le ${quandVisite(v)} est annulée. ${prof}, lycée Raymond Queneau.`
+    : `Bonjour, je vous informe de ma visite de stage pour ${nomEleve(e)} le ${quandVisite(v)}, ${ouVisite(v)}. ${prof}, professeur au lycée Raymond Queneau.`;
+}
+async function prevenirVisite(e, v, mailTuteur, eleve) {
+  let r = null, err = '';
+  if (mailTuteur || eleve) {
+    try { r = await api('POST', '/api/visite/notifier', { eleveId: e.id, visiteId: v.id, emailTuteur: mailTuteur, eleve }); }
+    catch (x) { err = x.message; }
+    if (r) await mutProf(e.id, p => { const w = (p.visites || []).find(x => x.id === v.id); if (w) w.prevenuLe = { date: maintenant(), tuteur: r.tuteur ? mailTuteur : '', eleve: r.eleve === true }; }).catch(() => {});
+  }
+  const tu = tuteurDe(e);
+  S.smsVisite = { e, v };
+  modal(`<h2>📣 Prévenir de la visite</h2><p><b>${esc(nomEleve(e))}</b> — ${esc(quandVisite(v))}${v.statut === 'annulee' ? ' <span class="badge" style="background:#b91c1c">annulée</span>' : ''}</p>
+    ${err ? `<div class="alerte attention petit">⚠️ Les e-mails n’ont pas pu partir : ${esc(err)}</div>` : r ? `<ul class="petit">${mailTuteur ? `<li>${r.tuteur ? '✅ E-mail envoyé au tuteur' : '❌ E-mail au tuteur non envoyé'} (${esc(mailTuteur)})</li>` : ''}
+      ${eleve ? `<li>${r.eleve === true ? '✅ E-mail envoyé à l’élève' : '⚠️ L’élève n’a pas d’adresse e-mail enregistrée : prévenez-le par SMS ou de vive voix'}</li>` : ''}</ul>` : '<p class="petit doux">Aucun e-mail envoyé.</p>'}
+    <h3>📱 Par SMS, depuis votre téléphone</h3>
+    <p class="doux petit">Le bouton ouvre l’application SMS de votre téléphone avec le message déjà rédigé : vous n’avez plus qu’à l’envoyer. Sur ordinateur, copiez le texte.</p>
+    <div class="sms-bloc"><label>Tuteur${tu.nom ? ` (${esc(tu.nom)})` : ''} — numéro<input id="sms_tut" type="tel" value="${esc(tu.tel)}" placeholder="06 12 34 56 78"></label>
+      <textarea id="sms_txt_tut" rows="3">${esc(texteSmsVisite(e, v, 'tuteur'))}</textarea>
+      <div class="actions"><button class="btn" data-a="smsOuvrir" data-p="tut">📱 SMS au tuteur</button><button class="btn sec" data-a="smsCopier" data-p="tut">📋 Copier</button></div></div>
+    <div class="sms-bloc"><label>Élève — numéro <span class="doux petit">(non conservé par l’application : choisissez-le dans vos contacts ou saisissez-le)</span><input id="sms_el" type="tel" placeholder="06 …"></label>
+      <textarea id="sms_txt_el" rows="3">${esc(texteSmsVisite(e, v, 'eleve'))}</textarea>
+      <div class="actions"><button class="btn" data-a="smsOuvrir" data-p="el">📱 SMS à l’élève</button><button class="btn sec" data-a="smsCopier" data-p="el">📋 Copier</button></div></div>
+    <div class="actions"><button class="btn sec" data-a="fermerModal">Terminé</button></div>`);
+}
+A.smsOuvrir = el => {
+  const p = el.dataset.p, num = val('sms_' + p).replace(/[^\d+]/g, ''), txt = $('#sms_txt_' + p).value;
+  location.href = `sms:${num}?&body=${encodeURIComponent(txt)}`;
+};
+A.smsCopier = async el => {
+  const txt = $('#sms_txt_' + el.dataset.p).value;
+  try { await navigator.clipboard.writeText(txt); toast('Message copié'); } catch { $('#sms_txt_' + el.dataset.p).select(); toast('Sélectionné : faites Ctrl+C'); }
+};

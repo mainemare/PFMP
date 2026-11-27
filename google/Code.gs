@@ -864,6 +864,48 @@ function router(m, chemin, route, b, jeton) {
     return ok({ ok: true, destinataire: avecMail.map(u => u.prenom + ' ' + u.nom).join(', ') });
   }
   if (route === 'POST /api/deconnexion') return ok({ ok: true });
+  // Visite de stage planifiee : e-mail au tuteur (adresse saisie par le professeur, reprise du protocole) et a l'eleve
+  // (adresse facultative de son compte, jamais montree au professeur). Le texte est compose ici a partir de la visite
+  // enregistree : le navigateur ne peut pas faire envoyer un message quelconque au nom du lycee.
+  if (route === 'POST /api/visite/notifier') {
+    if (!estProf) return ko(403, 'interdit');
+    const eleveId = String(b.eleveId || ''), vid = String(b.visiteId || '');
+    if (!/^[a-f0-9]{12}$/.test(eleveId) || !voitEleve(user, eleveId)) return ko(403, 'interdit');
+    if (trop('visite|' + user.id, 40)) return ko(429, 'trop_essais');
+    compter('visite|' + user.id);
+    const v = ((JSON.parse(getDoc('eleve/' + eleveId + '/prof')) || {}).visites || []).find(x => x.id === vid);
+    if (!v) return ko(404, 'introuvable');
+    const mt = String(b.emailTuteur || '').trim().toLowerCase();
+    if (mt && !emailValide(mt)) return ko(400, 'email_invalide');
+    const profil = JSON.parse(getDoc('eleve/' + eleveId + '/profil')) || {}, compte = comptes().find(u => u.id === eleveId) || {};
+    const prenom = profil.prenom || compte.prenom || '', nomEl = (prenom + ' ' + (profil.nom || compte.nom || '')).trim();
+    const cl = lesClasses().find(c => c.id === (profil.classeId || compte.classeId));
+    const lycee = (JSON.parse(getDoc('commun/etablissement')) || {}).nom || 'Lycée Raymond Queneau';
+    const J = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'], M = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
+    const d = new Date(v.date + 'T12:00:00'), quand = J[d.getDay()] + ' ' + d.getDate() + ' ' + M[d.getMonth()] + ' ' + d.getFullYear() + (v.heure ? ' à ' + v.heure.replace(':', ' h ') : '');
+    const ent = v.entreprise || {}, annule = v.statut === 'annulee', prof = v.profNom || (user.prenom + ' ' + user.nom);
+    const ou = v.mode === 'visio' ? 'En visioconférence' + (v.lien ? ' : ' + v.lien : ' (le lien sera communiqué)')
+      : v.lieu === 'autre' ? 'Lieu : ' + v.adresse : "Dans l'entreprise" + (ent.nom ? ' ' + ent.nom : '') + (ent.adresse ? ' (' + ent.adresse + ')' : '');
+    const contact = user.email ? 'Pour toute question ou en cas d\'empêchement, vous pouvez me répondre directement à ce message (' + user.email + ').' : "En cas d'empêchement, merci de contacter le lycée.";
+    const sujet = (annule ? 'ANNULÉE - ' : '') + 'Visite de stage de ' + nomEl + ' - ' + quand;
+    const res = { tuteur: false, eleve: b.eleve ? (compte.email ? false : 'sans_email') : null };
+    const envoyer = (to, corps) => MailApp.sendEmail(Object.assign({ to: to, name: prof + ' - ' + lycee, subject: sujet, body: corps }, user.email ? { replyTo: user.email } : {}));
+    try {
+      if (mt) {
+        envoyer(mt, 'Bonjour,\n\n' + (annule ? 'La visite de stage de ' + nomEl + (cl ? ', élève de ' + cl.nom + ',' : '') + ' prévue le ' + quand + ' est annulée.'
+          : 'Je vous informe de ma visite de stage pour ' + nomEl + (cl ? ', élève de ' + cl.nom + ',' : '') + ' que vous accueillez :\n\n  Date : ' + quand + '\n  ' + ou)
+          + '\n\n' + contact + '\n\nCordialement,\n' + prof + '\nProfesseur - ' + lycee + '\n\n(Message envoyé par l\'application Suivi des stages du lycée.)');
+        res.tuteur = true;
+      }
+      if (b.eleve && compte.email) {
+        envoyer(compte.email, 'Bonjour ' + prenom + ',\n\n' + (annule ? 'La visite de ton professeur prévue le ' + quand + ' est annulée.'
+          : 'Ton professeur viendra te voir pendant ton stage :\n\n  Date : ' + quand + '\n  ' + ou + (v.message ? '\n  Message : ' + v.message : '') + '\n\nPense à prévenir ton tuteur.')
+          + '\n\n' + prof + '\n\n(Message envoyé par l\'application Suivi des stages : tu retrouves la visite sur ton accueil.)');
+        res.eleve = true;
+      }
+    } catch (err) { console.error('Envoi de la visite impossible : ' + (err && err.message)); return ko(502, 'envoi_impossible'); }
+    return ok(res);
+  }
   if (route === 'GET /api/profs') return ok(comptes().filter(u => u.role === 'prof').map(u => ({ id: u.id, nom: u.nom, prenom: u.prenom })));
 
   if (route === 'GET /api/admin/codes') return estProf ? ok({ codeEleve: c.codeEleve, codeOffres: c.codeOffres }) : ko(403, 'interdit');
