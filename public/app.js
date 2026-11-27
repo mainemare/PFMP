@@ -382,7 +382,7 @@ function vueAccueil() {
   const todo = [[d.profil.residences.some(r => r.lat != null), 'Compléter mon profil et mes communes de résidence', 'profil'], [!!d.memento.accroche.trim(), 'Préparer mon memento d’appel', 'memento'],
     [!!d.cv.deposeLe, 'Déposer mon CV', 'cv'], [!!d.lettre.deposeLe, 'Déposer ma lettre de motivation', 'lettre'], [demandesP(d).length > 0, 'Sélectionner des entreprises à appeler', 'entreprises']];
   const ph = phaseEleve(d), recherche = ph === 'avant' || n < 5;
-  return `<div class="alerte ${al.c}" role="alert">${al.h}</div>${blocVisiteEleve(d)}${blocRappelBord(d)}${blocParcours(d)}${blocPeriodes(d)}
+  return `<div class="alerte ${al.c}" role="alert">${al.h}</div>${blocVisiteEleve(d)}${blocRappelBord(d)}${alertesJoursBord(d)}${blocParcours(d)}${blocPeriodes(d)}
   ${recherche ? `<section class="carte"><h2>🔎 Ma recherche de stage${(() => { const p = periodesEleve(d).find(x => cleP(x) === periodeActive(d)); return p && periodesEleve(d).length > 1 ? ` (${esc(p.label || 'Stage')})` : ''; })()} : où j’en suis</h2>${barre(n, false, d)}${progressionRecherche(d) ? `<p style="margin:10px 0 0">${progressionRecherche(d)}</p>` : ''}
     <div class="etapes">${NIV.map((v, i) => `<div class="${i <= n ? 'fait' : ''}" style="${i <= n ? `background:${NIV[n].c}` : ''}"><b>${i}</b>${v.l}</div>`).join('')}</div>
     <p class="doux petit" style="margin-top:10px">Le niveau avance tout seul : 1 dès qu’une entreprise est sélectionnée, 2 (recherche active) à partir de ${SEUIL_ACTIVE} entreprises contactées — très active à partir de ${SEUIL_TRES_ACTIVE} —, puis selon le statut de tes demandes (rendez-vous, protocole, convention).</p></section>

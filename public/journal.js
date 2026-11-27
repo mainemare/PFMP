@@ -50,7 +50,7 @@ function vueJournalBord() {
   const passes = l.filter(j => j <= today() && etatJour(d, j) !== 'absent'), complets = passes.filter(j => etatJour(d, j) === 'complet').length;
   const prec = Object.entries(d.bord.jours || {}).filter(([j, x]) => j < jour && x.lieu).sort().pop();
   const e = Object.assign({ texte: '', photo: false, absent: false, motif: '', lieu: '', type: '', nature: '', duree: '', autonomie: '' }, prec && !(d.bord.jours[jour] || {}).lieu ? { lieu: prec[1].lieu, type: prec[1].type, nature: prec[1].nature, duree: prec[1].duree } : {}, d.bord.jours[jour] || {}), retour = (d.prof.bord || {})[jour], futur = jour > today();
-  return `<section class="carte"><h2>📓 Mon journal de bord</h2>
+  return `${alertesJoursBord(d)}<section class="carte"><h2>📓 Mon journal de bord</h2>
     <p>Chaque jour de stage, note <b>au moins ${LIGNES_MIN} lignes</b> sur ta journée et ajoute <b>une photo</b>${dispense ? ' (tu en es dispensé)' : ''}. Ton professeur le lit et te fait des retours.</p>
     ${dt ? `<p class="petit">📅 Stage du ${fmt(dt.debut)} au ${fmt(dt.fin)} · <b>${complets}/${passes.length}</b> jour(s) complet(s) à ce jour</p>` : '<div class="alerte info petit">Tes dates de stage ne sont pas encore fixées : choisis le jour ci-dessous.</div>'}
     ${dispense ? `<div class="alerte info petit">📷 Ton professeur t’a dispensé de photo${dispense.motif ? ` : ${esc(dispense.motif)}` : ''}.</div>` : ''}

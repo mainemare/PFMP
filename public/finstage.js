@@ -49,7 +49,10 @@ const AVANCEMENT = {
     if (l.some(x => x.protocole && x.protocole.soumisLe)) return [75, 'envoyé au professeur référent'];
     if (l.some(x => x.protocole)) return [40, 'commencé'];
     return n === 3 ? [15, 'rendez-vous obtenu : prépare-le'] : [0, 'après un rendez-vous']; },
-  bord: d => { const b = bilanBord(d); return b.passes ? [Math.round(b.complets / b.passes * 100), `${b.complets}/${b.passes} jour(s) remplis`] : [0, 'dès le 1er jour du stage']; },
+  bord: d => { const b = bilanBord(d), c = controleJours(d, periodeFin(d));
+    // Stage terminé ou attestation signée : comparaison avec les jours déclarés par l'entreprise
+    if (c && c.declares && (c.signe || c.fini)) return [Math.min(100, Math.round(c.complets / c.declares * 100)), `${c.complets}/${c.declares} jour(s) complété(s)${c.manque ? ' · jours manquants non indemnisables' : ''}`];
+    return b.passes ? [Math.round(b.complets / b.passes * 100), `${b.complets}/${b.passes} jour(s) remplis`] : [0, 'dès le 1er jour du stage']; },
   portfolio: d => { const ev = d.prof.portfolio; if (ev && ev.valide) return [100, `noté ${fmtNote(ev.total)}/20`];
     const p = d.portfolio || {}; if (!Object.keys(p).length) return [0, 'à rédiger'];
     const s = totalPf(noteAutoPf(p)); return [Math.min(95, Math.round(s / 20 * 100)), `note indicative ${fmtNote(s)}/20`]; },
@@ -172,7 +175,7 @@ function blocAttestation(d, k) {
   const a = attP(d, k), at = attDonnees(d, k), id = identiteAtt(d), sg = a.signature;
   const ligne = (l, v) => `<tr><th>${l}</th><td>${v ? esc(v) : '<span class="doux">à compléter par l’entreprise</span>'}</td></tr>`;
   return `<section class="carte"><h2>📝 Attestation de stage</h2>
-    <p class="petit doux">Obligatoire : complétée et signée par l’entreprise le dernier jour, elle prouve les jours effectués et permet le versement de l’allocation de stage de l’État.</p>
+    <p class="petit doux">Obligatoire : complétée et signée par l’entreprise le dernier jour, elle prouve les jours effectués et permet le versement de l’allocation de stage de l’État. Seuls les jours dont l’activité est déclarée dans ton journal de bord peuvent être indemnisés.</p>${alerteJoursPeriode(d, k)}
     ${a.fichierLe ? `<div class="fichier-depose"><span class="icone-pdf" aria-hidden="true">PDF</span><div><b>Attestation signée</b>${sg ? ` par ${esc(sg.nom)}${sg.fonction ? ` (${esc(sg.fonction)})` : ''}` : ''} le ${fmtDT(sg ? sg.date : a.fichierLe)}
         <br>${a.valide ? '✅ Validée par ton professeur.' : '🟣 En attente de vérification par ton professeur.'}</div></div>${blocCorrection(a)}
       <div class="actions"><button class="btn sec" data-a="voirFichier" data-t="attestation" data-p="${esc(k)}">👁️ Voir l’attestation signée</button></div>` : ''}
@@ -290,7 +293,7 @@ function dosAttestation(e) {
       const k = cleP(p), a = attP(d, k), at = attDonnees(d, k), sg = a.signature;
       return `<div class="att-prof" data-k="${esc(k)}"><h3>📅 ${esc(p.label || 'Stage')} <span class="petit doux">${fmt(p.debut)} → ${fmt(p.fin)}</span></h3>
         <p>${a.fichierLe ? `✅ Signée${sg ? ` par <b>${esc(sg.nom)}</b>${sg.fonction ? ` (${esc(sg.fonction)})` : ''} le ${fmtDT(sg.date)}` : ` (document déposé le ${fmtDT(a.fichierLe)})`}
-          <button class="btn mini" data-a="voirAttProf" data-p="${esc(k)}">👁️ Voir l’attestation signée</button>` : '⬜ Pas encore signée.'}</p>
+          <button class="btn mini" data-a="voirAttProf" data-p="${esc(k)}">👁️ Voir l’attestation signée</button>` : '⬜ Pas encore signée.'}</p>${ligneJoursProf(d, k)}
         <details ${a.fichierLe ? '' : 'open'}><summary><b>Informations de l’attestation</b>${a.majProf ? ` <span class="petit doux">(corrigées par ${esc(a.majProf.par)} le ${fmtDT(a.majProf.date)})</span>` : ''}</summary>
           <div class="deux">${[...CHAMPS_ATT_ENT, ...CHAMPS_ATT_PERIODE].map(([c, l, type]) => `<label>${esc(l)}<input class="att_c" data-champ="${c}" ${type === 'date' ? 'type="date"' : type === 'number' ? 'type="number" min="0"' : ''} value="${esc(at[c] || '')}"></label>`).join('')}</div>
           <div class="actions"><button class="btn mini" data-a="attSauverProf" data-p="${esc(k)}">Enregistrer les informations</button><button class="btn mini sec" data-a="attApercuProf" data-p="${esc(k)}">👁️ Aperçu</button></div></details>
@@ -317,3 +320,36 @@ A.attValiderProf = async el => {
   render(); toast('Enregistré');
 };
 A.voirAttProf = el => { const e = eleveOuvert(); return ouvrirVisionneuse({ eleveId: e.id, type: 'attestation', periode: el.dataset.p, prof: false, titre: `Attestation de stage de ${nomEleve(e)}` }); };
+
+/* ---------- Croisement : jours déclarés par l'entreprise / jours complétés dans le journal de bord ----------
+ * Seuls les jours dont l'activité est déclarée dans le journal de bord (journée complète) peuvent être indemnisés. */
+function controleJours(d, k) {
+  const p = periodesEleve(d).find(x => cleP(x) === k); if (!p) return null;
+  const at = attDonnees(d, k), a = attP(d, k), debut = at.debut || p.debut, fin = at.fin || p.fin || p.debut;
+  const bord = Object.keys((d.bord && d.bord.jours) || {}).filter(j => j >= debut && j <= fin);
+  const complets = bord.filter(j => etatJour(d, j) === 'complet').length, declares = parseInt(at.jours, 10);
+  // Premier jour travaillé de la période sans activité complète dans le journal
+  const js = ((demandeDePeriode(d, k) || {}).protocole || {}).jours, avecJours = js && Object.values(js).some(Boolean);
+  let aCompleter = '';
+  for (let x = new Date(debut + 'T12:00:00'); isoJour(x) <= fin && isoJour(x) <= today(); x.setDate(x.getDate() + 1)) {
+    const travaille = avecJours ? !!js[JOURS_SEM[x.getDay()]] : x.getDay() >= 1 && x.getDay() <= 5;
+    if (travaille && !['complet', 'absent'].includes(etatJour(d, isoJour(x)))) { aCompleter = isoJour(x); break; }
+  }
+  return { label: p.label || 'Stage', complets, declares: isNaN(declares) ? null : declares, parEntreprise: !!a.fichierLe && !!a.signature,
+    signe: !!a.fichierLe, fini: fin < today(), manque: !isNaN(declares) && complets < declares ? declares - complets : 0, aCompleter };
+}
+function alerteJoursPeriode(d, k, titre) {
+  const c = controleJours(d, k);
+  if (!c || !c.manque || !(c.signe || c.fini)) return '';
+  const qui = c.parEntreprise ? `L’entreprise a déclaré <b>${c.declares} jour(s)</b> effectué(s)` : `L’attestation compte <b>${c.declares} jour(s)</b> de stage`;
+  return `<div class="alerte alerte2" role="alert">📓 <b>${titre ? esc(c.label) + ' : ' : ''}ton journal de bord ne contient que ${c.complets} jour(s) complété(s).</b>
+    ${qui}. Les jours où aucune activité n’est déclarée dans le journal de bord <b>ne peuvent pas être indemnisés</b> : complète les ${c.manque} jour(s) manquant(s).
+    ${c.aCompleter ? `<button class="btn mini" data-a="bordAllerJour" data-j="${c.aCompleter}">Compléter le ${esc(jourCourt(c.aCompleter))}</button>` : ''}</div>`;
+}
+const alertesJoursBord = d => periodesEleve(d).map(p => alerteJoursPeriode(d, cleP(p), periodesEleve(d).length > 1)).join('');
+A.bordAllerJour = el => { S.bordJour = el.dataset.j; S.vue = 'bord'; render(); window.scrollTo(0, 0); };
+// Professeur : rappel du croisement dans l'onglet « Attestation »
+function ligneJoursProf(d, k) {
+  const c = controleJours(d, k); if (!c || c.declares == null) return '';
+  return `<p class="petit" style="color:${c.manque && (c.signe || c.fini) ? '#b45309' : 'inherit'}">📓 Journal de bord : <b>${c.complets}</b> jour(s) complété(s) pour <b>${c.declares}</b> jour(s) ${c.parEntreprise ? 'déclarés par l’entreprise' : 'prévus'}${c.manque && (c.signe || c.fini) ? ` · ⚠️ ${c.manque} jour(s) sans activité déclarée, non indemnisables` : c.manque ? '' : ' ✅'}</p>`;
+}
