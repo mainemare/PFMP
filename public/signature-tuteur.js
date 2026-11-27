@@ -20,7 +20,7 @@ function lireLien() {
   return Object.fromEntries(h.split('&').filter(Boolean).map(x => { const i = x.indexOf('='); return [x.slice(0, i), x.slice(i + 1)]; }));
 }
 const P = lireLien();
-const ERREURS = { lien_expire: 'Ce lien a expiré ou a été annulé. Demandez à l’élève de vous en envoyer un nouveau.', deja_signe: 'Ce protocole a déjà été signé. Merci !',
+const ERREURS = { lien_expire: 'Ce lien a expiré ou a été annulé. Demandez à l’élève de vous en envoyer un nouveau.', deja_signe: 'Ce document a déjà été signé. Merci !',
   trop_essais: 'Trop d’essais : réessayez dans un quart d’heure.', trop_gros: 'Les images sont trop lourdes : reprenez une photo plus petite.', protosig_indisponible: 'La signature à distance n’est pas disponible sur ce serveur.' };
 const E = { d: null, proto: null, pad: null, img: '', cachet: '', mode: 'pad' };
 const TRANCHES = ['matin_de', 'matin_a', 'apresmidi_de', 'apresmidi_a'];
@@ -68,6 +68,7 @@ async function init() {
   try { r = await api('/api/protosig/lire', { id: P.p }); } catch (e) { return message('Lien indisponible', esc(e.message)); }
   try { E.d = await CONV.dechiffrer(r.chiffre, P.k); } catch { return message('Lien incomplet', 'Le lien a été coupé : ouvrez-le en entier, ou demandez à l’élève de vous le renvoyer.'); }
   const fin = new Date(r.expire).toLocaleString('fr-FR', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' });
+  if (E.d.att) return afficherAttestation(fin);   // attestation de stage (fin de stage)
   if (!E.d.proto) return afficherAncienLien(fin);   // lien créé par une version précédente : PDF déjà rempli
   E.proto = E.d.proto;
   const ent = E.proto.ent || {}, h = E.proto.horaires || {}, jours = E.proto.jours || { lundi: true, mardi: true, mercredi: true, jeudi: true, vendredi: true };
@@ -197,4 +198,53 @@ function afficherAncienLien(fin) {
   modeSig('pad'); zoneCachet();
   afficherPdf(pdf).catch(e => { $('#pages').innerHTML = `<p>${esc(e.message)}</p>`; });
 }
+/* ===== Attestation de stage (Annexe 3) : l'entreprise vérifie, complète (jours effectués, gratification…) et signe ===== */
+function afficherAttestation(fin) {
+  const a = E.d.att || {}, champ = ([k, l, type]) => `<label>${esc(l)}<input id="at_${k}" ${type === 'date' ? 'type="date"' : type === 'number' ? 'type="number" min="0" inputmode="numeric"' : ''} value="${esc(a[k] || '')}"></label>`;
+  $('#app').innerHTML = `<section class="carte"><h1 style="margin-top:0">Attestation de stage</h1>
+      <p><b>${esc(E.d.eleve)}</b>${E.d.classe ? ` (${esc(E.d.classe)})` : ''}, élève du lycée Raymond Queneau, vous demande de compléter et de signer l’attestation de sa période de formation en milieu professionnel${E.d.entreprise ? ` chez <b>${esc(E.d.entreprise)}</b>` : ''}.</p>
+      <ol class="petit"><li>Vérifiez les informations pré-remplies et complétez-les (nombre de jours effectués, gratification éventuelle).</li><li>Relisez l’attestation.</li><li>Signez et ajoutez si possible le tampon de l’entreprise.</li></ol>
+      <p class="doux petit">Lien valable jusqu’au ${esc(fin)}, utilisable une seule fois. L’attestation doit être signée le dernier jour du stage par un responsable autorisé de l’entreprise.</p></section>
+    <section class="carte"><h2>1. L’entreprise (ou l’organisme d’accueil)</h2><div class="deux">${CHAMPS_ATT_ENT.map(champ).join('')}</div></section>
+    <section class="carte"><h2>2. La période de formation</h2><div class="deux">${CHAMPS_ATT_PERIODE.map(champ).join('')}</div>
+      <p class="doux petit">Durée effective : nombre de jours réellement effectués par l’élève (absences déduites). Gratification : laissez vide ou indiquez 0 si aucune gratification n’a été versée.</p></section>
+    <section class="carte"><h2>3. Relire l’attestation</h2>
+      <div class="actions"><button class="btn" id="apercu">👁️ Afficher l’attestation complétée</button><button class="btn sec" id="telecharger">⬇️ Télécharger le PDF</button></div>
+      <div id="pages" class="pdf-pages"></div></section>
+    <section class="carte"><h2>4. Signature et cachet de l’entreprise</h2>
+      <div class="deux"><label>Nom et prénom du signataire<input id="nom" autocomplete="name" value="${esc(a.representant || '')}"></label><label>Fonction<input id="fonction" value="${esc(a.fonction || '')}" placeholder="Gérant, responsable RH, chef d’équipe…"></label></div>
+      <div class="onglets"><button type="button" id="m_pad" class="actif">✍️ Signer sur l’écran</button><button type="button" id="m_photo">📷 Photo de la signature</button></div>
+      <div id="zoneSig"></div>
+      <h3 class="petit" style="margin:14px 0 4px">Tampon (cachet) de l’entreprise <span class="doux">(photo, facultatif)</span></h3>
+      <div id="zoneCachet"></div>
+      <label class="choix" style="margin-top:12px"><input type="checkbox" id="accord">J’atteste que l’élève a effectué cette période de formation en milieu professionnel dans notre entreprise, pour la durée indiquée.</label>
+      <div class="actions"><button class="btn" id="signer">✅ Valider et signer l’attestation</button></div>
+      <p class="doux petit">🔒 Vos réponses et votre signature sont chiffrées sur cet appareil et transmises à l’élève, qui les remet au lycée.</p></section>`;
+  $('#apercu').onclick = async () => { try { $('#pages').innerHTML = '<p class="doux">Préparation de l’attestation…</p>'; await afficherPdf(new Uint8Array(await fabriquerAtt())); $('#pages').scrollIntoView({ behavior: 'smooth' }); } catch (e) { toast(e.message, true); } };
+  $('#telecharger').onclick = async () => { try { const o = await fabriquerAtt(), l = document.createElement('a'); l.href = URL.createObjectURL(new Blob([o], { type: 'application/pdf' })); l.download = 'Attestation de stage.pdf'; document.body.append(l); l.click(); l.remove(); } catch (e) { toast(e.message, true); } };
+  $('#m_pad').onclick = () => modeSig('pad'); $('#m_photo').onclick = () => modeSig('photo');
+  $('#signer').onclick = signerAtt;
+  modeSig('pad'); zoneCachet();
+}
+function lireAtt() { const r = {}; for (const [k] of [...CHAMPS_ATT_ENT, ...CHAMPS_ATT_PERIODE]) r[k] = ($('#at_' + k).value || '').trim(); return r; }
+const fabriquerAtt = sig => fabriquerPdfAttestation(Object.assign({}, lireAtt(), { eleve: E.d.ident || {}, etab: E.d.etab || {}, sig }));
+async function signerAtt() {
+  const r = lireAtt(), nom = $('#nom').value.trim(), fonction = $('#fonction').value.trim(), bouton = $('#signer');
+  const manque = [['entreprise', 'le nom de l’entreprise'], ['representant', 'le nom du représentant'], ['debut', 'la date de début'], ['fin', 'la date de fin'], ['jours', 'la durée effective (en jours)']].filter(([k]) => !r[k]).map(([, l]) => l);
+  if (manque.length) return toast('À compléter : ' + manque.join(', ') + '.', true);
+  if (r.fin < r.debut) return toast('La date de fin est avant la date de début.', true);
+  if (!/^\d{1,3}$/.test(r.jours)) return toast('Durée effective : indiquez un nombre de jours.', true);
+  if (!nom) return toast('Indiquez le nom du signataire.', true);
+  if (E.mode === 'pad') { if (!E.pad || E.pad.vide()) return toast('Signez dans le cadre.', true); E.img = E.pad.image(); }
+  if (!E.img) return toast('Ajoutez la photo de votre signature.', true);
+  if (!$('#accord').checked) return toast('Cochez la case pour confirmer l’attestation.', true);
+  bouton.disabled = true; bouton.textContent = 'Envoi…';
+  try {
+    const sig = await CONV.chiffrer({ img: E.img, cachet: E.cachet, nom, fonction, date: new Date().toISOString(), att: r }, P.k);
+    // Coordonnées de l'entreprise seulement (rien sur l'élève) pour le fichier des entreprises du lycée.
+    await api('/api/protosig/signer', { id: P.p, sig, infos: { adresse: r.adresse, siret: r.siret, signataire: r.representant, fonctionSignataire: r.fonction } });
+    message('✅ Merci !', `L’attestation complétée et signée a bien été transmise à ${esc(E.d.eleve)} et au lycée. Vous pouvez fermer cette page.`);
+  } catch (e) { toast(e.message, true); bouton.disabled = false; bouton.textContent = '✅ Valider et signer l’attestation'; }
+}
+
 init();

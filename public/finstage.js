@@ -53,7 +53,7 @@ const AVANCEMENT = {
   portfolio: d => { const ev = d.prof.portfolio; if (ev && ev.valide) return [100, `noté ${fmtNote(ev.total)}/20`];
     const p = d.portfolio || {}; if (!Object.keys(p).length) return [0, 'à rédiger'];
     const s = totalPf(noteAutoPf(p)); return [Math.min(95, Math.round(s / 20 * 100)), `note indicative ${fmtNote(s)}/20`]; },
-  fin: d => { const a = d.attestation || {}; return a.valide ? [100, 'attestation validée'] : a.fichierLe ? [70, 'attestation déposée'] : [0, 'attestation à faire signer']; },
+  fin: d => { const k = periodeFin(d), a = attP(d, k); return a.valide ? [100, 'attestation validée'] : a.fichierLe ? [80, 'attestation signée'] : lienAtt(k) ? [40, 'en attente de la signature'] : [0, 'attestation à faire signer']; },
 };
 const coulAv = p => p >= 100 ? '#16a34a' : p >= 60 ? '#0d9488' : p >= 30 ? '#ca8a04' : p > 0 ? '#ea580c' : '#cbd5e1';
 function barresPhase(d, p, ici) {
@@ -68,10 +68,6 @@ function barresPhase(d, p, ici) {
 }
 
 /* ---------- Accueil : « Mon parcours » ---------- */
-function etatAttestation(d) {
-  const a = d.attestation || {};
-  return a.valide ? ['✅', 'Attestation validée'] : a.fichierLe ? ['🟣', 'Attestation déposée, en attente de validation'] : ['⬜', 'Attestation à faire signer puis déposer'];
-}
 function bilanBord(d) {
   const jours = joursBord(d).filter(j => j <= today()), complets = jours.filter(j => ['complet', 'absent'].includes(etatJour(d, j))).length;
   return { total: joursBord(d).length, passes: jours.length, complets };
@@ -91,19 +87,70 @@ function blocParcours(d) {
     </div>`).join('')}</div></section>`;
 }
 
-/* ---------- Page « Fin de stage » ---------- */
-function entrepriseDuStage(d) {
-  const l = d.demandes.liste, dem = l.find(x => x.statut === 'convention') || l.find(x => x.statut === 'protocole');
-  if (!dem) return { nom: '', adresse: '', tuteur: '' };
-  const base = S.entreprises.find(e => e.id === dem.entrepriseId) || {}, pr = base.protocole || {};
-  return { nom: dem.nom || base.nom || '', adresse: pr.adresse || dem.adresse || base.adresse || '', tuteur: pr.tuteur || dem.contact || dem.interlocuteur || '' };
+/* ---------- Attestation de stage (Annexe 3) : une par période ----------
+ * Pré-remplie par l'application (demande et protocole de la période, fichier des entreprises, dates de la classe,
+ * jours non travaillés du journal de bord), corrigeable par le professeur, complétée et signée par l'entreprise
+ * avec un lien à durée limitée (même mécanisme chiffré que le protocole). Le nom de famille et la date de naissance
+ * de l'élève restent sur son appareil ; l'attestation signée (PDF) est rangée dans le dossier privé du Drive. */
+const villeDe = a => { const m = /\b\d{5}\s+(.+)$/.exec(String(a || '').trim()); return m ? m[1].replace(/\s*\bcedex\b.*$/i, '').trim() : ''; };
+const JOURS_SEM = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
+function joursEffectifs(d, debut, fin, js) {
+  let n = 0;
+  const avecJours = js && Object.values(js).some(Boolean);
+  for (let x = new Date(debut + 'T12:00:00'); isoJour(x) <= fin; x.setDate(x.getDate() + 1)) {
+    const travaille = avecJours ? !!js[JOURS_SEM[x.getDay()]] : x.getDay() >= 1 && x.getDay() <= 5, e = ((d.bord && d.bord.jours) || {})[isoJour(x)];
+    if (travaille && !(e && e.absent)) n++;
+  }
+  return n;
 }
+// Période affichée sur la page « Fin du stage » : celle choisie, sinon la dernière commencée.
+function periodeFin(d) {
+  const ps = periodesEleve(d);
+  if (S.periodeFinVue && ps.some(p => cleP(p) === S.periodeFinVue)) return S.periodeFinVue;
+  const commencees = ps.filter(p => p.debut <= today());
+  const p = commencees[commencees.length - 1] || ps[0];
+  return p ? cleP(p) : '';
+}
+const attP = (d, k) => ((d.attestation && d.attestation.periodes) || {})[k] || {};
+function demandeDePeriode(d, k) { const l = demandesP(d, k); return l.find(x => x.statut === 'convention') || l.find(x => x.statut === 'protocole') || null; }
+function attDefaut(d, k) {
+  const ps = periodesEleve(d), p = ps.find(x => cleP(x) === k) || {}, dem = demandeDePeriode(d, k);
+  const base = (dem && S.entreprises.find(e => e.id === dem.entrepriseId)) || {}, bp = base.protocole || {}, pr = (dem && dem.protocole) || {}, pe = pr.ent || {};
+  const o = k && k === periodeActive(d) && d.prof.dates && d.prof.dates.debut ? d.prof.dates : p;
+  const adresse = pe.adresse || (dem && dem.adresse) || bp.adresse || base.adresse || '';
+  const r = { entreprise: pe.entreprise || (dem && dem.nom) || '', adresse, siret: pe.siret || bp.siret || '', representant: pe.signataire || bp.signataire || '', fonction: pe.fonctionSignataire || bp.fonctionSignataire || '',
+    numero: ps.indexOf(p) >= 0 ? String(ps.indexOf(p) + 1) : '', debut: o.debut || '', fin: o.fin || o.debut || '', jours: '', gratification: '', faitA: villeDe(adresse), faitLe: o.fin || '' };
+  if (r.debut) r.jours = String(joursEffectifs(d, r.debut, r.fin, pr.jours));
+  return r;
+}
+// Les corrections du professeur, puis les réponses de l'entreprise, passent devant le pré-remplissage.
+function attDonnees(d, k) {
+  const r = attDefaut(d, k), sauve = attP(d, k).donnees || {};
+  for (const [c, v] of Object.entries(sauve)) if (v != null && String(v).trim() !== '') r[c] = String(v);
+  return r;
+}
+function etabAtt() {
+  const t = Object.assign({}, CONV.ETAB_DEFAUT, typeof etabCourant === 'function' ? etabCourant() : {});
+  return { nom: String(t.nom || '').toUpperCase(), adresse: String(t.adressePostale || t.adresse || '').split('\n').map(s => s.trim()).filter(Boolean).join(' - '), chef: t.chef || '' };
+}
+function identiteAtt(d) { const i = identiteCV(), cl = classeEleve(d) || {}; return { nom: i.nom || '', prenom: d.profil.prenom || i.prenom || '', naissance: i.naissance || '', classe: cl.nom || '' }; }
+function lireIdentiteAtt() {
+  const nom = $('#att_nom') ? val('att_nom') : null, naissance = $('#att_naissance') ? val('att_naissance') : null;
+  try { const i = identiteCV(); if (nom != null) i.nom = nom; if (naissance != null) i.naissance = naissance; localStorage.setItem(cleIdentite(), JSON.stringify(i)); } catch { /* stockage indisponible */ }
+  return identiteAtt(S.el);
+}
+function etatAttestation(d) {
+  const k = periodeFin(d), a = attP(d, k);
+  return a.valide ? ['✅', 'Attestation validée'] : a.fichierLe ? ['🟣', 'Attestation signée, en attente de validation'] : lienAtt(k) ? ['⏳', 'En attente de la signature de l’entreprise'] : ['⬜', 'Attestation à faire signer'];
+}
+
+/* ---------- Page « Fin du stage » ---------- */
 function vueFinStage() {
-  const d = S.el, dt = datesEleve(d), a = d.attestation, b = bilanBord(d), ev = d.prof.portfolio, nb = nbAnnotations(a);
-  const pf = d.portfolio || {}, pfCommence = Object.keys(pf).length > 0, auto = pfCommence ? totalPf(noteAutoPf(pf)) : 0;
-  const ent = entrepriseDuStage(d), fini = dt && today() > dt.fin;
-  return `<div class="bandeau-phase" style="--ph:#7c3aed"><span>3</span><div><b>🏁 Fin du stage</b><br>Évaluation et attestation de présence</div></div>
-  ${!fini ? `<div class="alerte info">${dt ? `Ton stage se termine le <b>${fmt(dt.fin)}</b>.` : 'Les dates de ton stage ne sont pas encore fixées.'} Prépare dès maintenant ton attestation : l’entreprise doit la remplir et la signer <b>le dernier jour</b>.</div>` : ''}
+  const d = S.el, k = periodeFin(d), p = periodesEleve(d).find(x => cleP(x) === k), b = bilanBord(d), ev = d.prof.portfolio;
+  const pf = d.portfolio || {}, pfCommence = Object.keys(pf).length > 0, auto = pfCommence ? totalPf(noteAutoPf(pf)) : 0, fini = p && (p.fin || p.debut) < today();
+  return `<div class="bandeau-phase" style="--ph:#7c3aed"><span>3</span><div><b>🏁 Fin du stage</b><br>Évaluation et attestation de stage</div></div>
+  ${ongletsPeriodes(d, k, 'voirPeriodeFin')}
+  ${p && !fini ? `<div class="alerte info">Ce stage se termine le <b>${fmt(p.fin)}</b>. L’entreprise doit compléter et signer ton attestation <b>le dernier jour</b> : prépare le lien dès maintenant.</div>` : ''}
   <div class="grille">
   <section class="carte"><h2>📊 Mon évaluation</h2>
     <h3>📓 Journal de bord</h3>
@@ -116,61 +163,95 @@ function vueFinStage() {
       : '<p>⬜ Pas encore commencé.</p>'}
     <div class="actions"><button class="btn sec" data-a="aller" data-v="portfolio">Ouvrir mon portfolio</button></div>
   </section>
-  <section class="carte"><h2>📝 Attestation de présence</h2>
-    <p class="petit doux">Obligatoire : elle prouve les jours effectués en entreprise (article 21 de la convention) et permet le versement de l’allocation de stage de l’État.</p>
-    ${a.fichierLe ? `<div class="fichier-depose"><span class="icone-pdf" aria-hidden="true">PDF</span><div><b>Attestation signée</b> déposée le ${fmtDT(a.fichierLe)}
-        <br>${a.valide ? '✅ Validée par ton professeur.' : nb ? `✏️ ${nb} annotation(s) de ton professeur : regarde-les.` : '🟣 En attente de vérification par ton professeur.'}</div></div>
-      ${blocCorrection(a)}<div class="actions"><button class="btn sec" data-a="voirFichier" data-t="attestation">👁️ Voir</button></div>` : ''}
-    <ol class="etapes-att">
-      <li><b>Télécharge l’attestation pré-remplie</b> et imprime-la (ou envoie-la à ton tuteur).
-        <label class="petit">Ton nom de famille, écrit en entier sur l’attestation <span class="doux">(n’est pas enregistré)</span><input id="att_nom" value="${esc(identiteCV().nom || '')}" autocomplete="family-name"></label>
-        ${ent.nom ? `<p class="petit doux">Entreprise : <b>${esc(ent.nom)}</b>${ent.tuteur ? ` · tuteur : ${esc(ent.tuteur)}` : ''}</p>` : '<p class="petit doux">Aucune entreprise au statut « protocole » ou « convention » dans tes appels : le nom de l’entreprise sera à écrire à la main.</p>'}
-        <button class="btn" data-a="attPdf">⬇️ Télécharger l’attestation</button></li>
-      <li><b>Le dernier jour</b>, l’entreprise indique le nombre de jours de présence, signe et appose son cachet.</li>
-      <li><b>Dépose l’attestation signée</b> : une photo bien nette ou un PDF.
-        <br><label class="btn depot-fichier">📷 ${a.fichierLe ? 'Déposer une nouvelle version' : 'Photo ou PDF de l’attestation'}<input type="file" accept="image/*,application/pdf,.pdf" data-c="deposerAttestation"></label></li>
-    </ol>
-    <p class="doux petit">🔒 Rangée dans le dossier privé de l’application, visible seulement par tes professeurs. Garde aussi l’original papier.</p>
-  </section></div>`;
+  ${blocAttestation(d, k)}</div>`;
+}
+A.voirPeriodeFin = el => { S.periodeFinVue = el.dataset.p; render(); };
+
+function blocAttestation(d, k) {
+  if (!k) return '<section class="carte"><h2>📝 Attestation de stage</h2><p class="doux">Les dates de stage de ta classe ne sont pas encore fixées.</p></section>';
+  const a = attP(d, k), at = attDonnees(d, k), id = identiteAtt(d), sg = a.signature;
+  const ligne = (l, v) => `<tr><th>${l}</th><td>${v ? esc(v) : '<span class="doux">à compléter par l’entreprise</span>'}</td></tr>`;
+  return `<section class="carte"><h2>📝 Attestation de stage</h2>
+    <p class="petit doux">Obligatoire : complétée et signée par l’entreprise le dernier jour, elle prouve les jours effectués et permet le versement de l’allocation de stage de l’État.</p>
+    ${a.fichierLe ? `<div class="fichier-depose"><span class="icone-pdf" aria-hidden="true">PDF</span><div><b>Attestation signée</b>${sg ? ` par ${esc(sg.nom)}${sg.fonction ? ` (${esc(sg.fonction)})` : ''}` : ''} le ${fmtDT(sg ? sg.date : a.fichierLe)}
+        <br>${a.valide ? '✅ Validée par ton professeur.' : '🟣 En attente de vérification par ton professeur.'}</div></div>${blocCorrection(a)}
+      <div class="actions"><button class="btn sec" data-a="voirFichier" data-t="attestation" data-p="${esc(k)}">👁️ Voir l’attestation signée</button></div>` : ''}
+    <h3>Pré-remplie par l’application</h3>
+    <div class="table-scroll"><table class="att-resume">${ligne('Entreprise', at.entreprise)}${ligne('Adresse', at.adresse)}${ligne('N° SIRET', at.siret)}${ligne('Représentée par', [at.representant, at.fonction].filter(Boolean).join(', '))}
+      ${ligne('Période', at.debut ? `n° ${at.numero || '…'} du ${dateAtt(at.debut)} au ${dateAtt(at.fin)}` : '')}${ligne('Durée effective', at.jours ? `${at.jours} jours` : '')}</table></div>
+    <p class="doux petit">Ton professeur peut corriger ces informations ; l’entreprise les vérifie et les complète avant de signer.</p>
+    <div class="deux"><label>Ton nom de famille <span class="doux petit">(gardé sur cet appareil)</span><input id="att_nom" value="${esc(id.nom)}" autocomplete="family-name"></label>
+      <label>Ta date de naissance <span class="doux petit">(gardée sur cet appareil)</span><input id="att_naissance" type="date" value="${esc(id.naissance)}"></label></div>
+    <div class="actions"><button class="btn sec" data-a="attApercu" data-p="${esc(k)}">👁️ Aperçu de l’attestation</button></div>
+    <h3>📱 Faire signer l’entreprise</h3>${blocLienAtt(k)}
+    <details class="petit" style="margin-top:12px"><summary>Signée sur papier ? Dépose une photo ou un PDF</summary>
+      <label class="btn sec depot-fichier" style="margin-top:8px">📷 Photo ou PDF de l’attestation signée<input type="file" accept="image/*,application/pdf,.pdf" data-c="deposerAttestation" data-p="${esc(k)}"></label></details>
+    <p class="doux petit">🔒 L’attestation signée est rangée dans le dossier privé de l’application, visible seulement par tes professeurs.</p></section>`;
 }
 
-/* Attestation pré-remplie (PDF) */
-A.attPdf = async () => {
-  const d = S.el, dt = datesEleve(d), ent = entrepriseDuStage(d), cl = S.classes.find(c => c.id === d.profil.classeId) || {};
-  const nomFam = val('att_nom');
-  try { if (nomFam) localStorage.setItem(cleIdentite(), JSON.stringify(Object.assign(identiteCV(), { nom: nomFam }))); } catch { /* */ }
-  const o = await outilsPdf(false), { f, W, L } = o, etab = Object.assign({}, CONV.ETAB_DEFAUT, typeof etabCourant === 'function' ? etabCourant() : {});
-  const gris = L.rgb(0.4, 0.42, 0.48), fond = L.rgb(0.95, 0.95, 0.98), x0 = 50, lg = W - 100;
-  o.nouvellePage();
-  lignesEtab(etab).forEach((l, i) => o.txt(l, x0, 50 + i * 12, 10, f.b));
-  String(etab.adressePostale || '').split('\n').forEach((l, i) => o.txt(l, x0, 76 + i * 10, 8, f.n, gris));
-  o.centre('ATTESTATION DE STAGE', W / 2, 140, 17, f.b);
-  o.centre('Période de formation en milieu professionnel (PFMP)', W / 2, 158, 11, f.n);
-  o.centre('À compléter et signer par l’entreprise le dernier jour du stage (article 21 de la convention)', W / 2, 174, 8.5, f.i, gris);
-  let y = 200;
-  const bloc = (titre, lignes) => {
-    o.rect(x0, y, lg, 18, { bord: 0, fond }); o.txt(titre, x0 + 8, y + 12.5, 10, f.b); y += 18;
-    const h = lignes.length * 20 + 6; o.rect(x0, y, lg, h, { bord: 0.6 });
-    lignes.forEach(([k, v], i) => { const yy = y + 17 + i * 20; o.txt(k, x0 + 8, yy, 9.5, f.n, gris);
-      if (v) o.txt(v, x0 + 150, yy, 10, f.b); else o.ligne(x0 + 150, yy + 2, x0 + lg - 10, yy + 2, 0.4, gris); });
-    y += h + 14;
-  };
-  bloc('L’entreprise (ou organisme) d’accueil', [['Nom', ent.nom], ['Adresse', ent.adresse], ['Tuteur', ent.tuteur]]);
-  bloc('atteste que l’élève', [['Nom et prénom', `${String(nomFam || d.profil.nom).toUpperCase()} ${d.profil.prenom}`.trim()], ['Classe', cl.nom || ''], ['Diplôme préparé', cl.diplome || '']]);
-  bloc('a effectué sa période de formation en milieu professionnel', [['Du', dt ? fmt(dt.debut) : ''], ['Au', dt ? fmt(dt.fin) : '']]);
-  // Partie remplie à la main par l'entreprise
-  o.txt('Nombre de jours de présence effectués :', x0, y + 10, 11, f.b); o.ligne(x0 + 220, y + 12, x0 + 290, y + 12, 0.6); o.txt('jour(s)', x0 + 296, y + 10, 11); y += 30;
-  o.txt('Absences éventuelles (dates et motifs) :', x0, y, 10, f.b); y += 6; o.rect(x0, y, lg, 56, { bord: 0.6 }); y += 74;
-  o.txt('Activités principales confiées à l’élève :', x0, y, 10, f.b); y += 6; o.rect(x0, y, lg, 70, { bord: 0.6 }); y += 90;
-  o.txt('Fait à', x0, y, 10); o.ligne(x0 + 32, y + 2, x0 + 200, y + 2, 0.5, gris); o.txt('le', x0 + 210, y, 10); o.ligne(x0 + 225, y + 2, x0 + 320, y + 2, 0.5, gris); y += 16;
-  o.rect(x0 + lg / 2, y, lg / 2, 92, { bord: 0.8 });
-  o.txt('Nom, qualité et signature du responsable', x0 + lg / 2 + 8, y + 14, 8.5, f.b); o.txt('Cachet de l’entreprise', x0 + lg / 2 + 8, y + 26, 8.5, f.b);
-  o.couper('Original remis à l’élève, copie conservée par l’entreprise. L’élève dépose une photo de l’attestation signée dans l’application de suivi des stages du lycée.', 8, lg / 2 - 20, f.i)
-    .forEach((l, i) => o.txt(l, x0, y + 14 + i * 11, 8, f.i, gris));
-  ouvrirPdf(await o.doc.save(), `Attestation de stage ${d.profil.prenom}.pdf`);
+/* Lien de signature pour l'entreprise (lien et clé gardés sur cet appareil le temps de récupérer la signature) */
+const cleLienAtt = k => 'attsig_' + (S.user && S.user.id) + '_' + k;
+function lienAtt(k) { try { const x = JSON.parse(localStorage.getItem(cleLienAtt(k)) || 'null'); return x && new Date(x.expire) > new Date() ? x : null; } catch { return null; } }
+function memoriserLienAtt(k, x) { try { if (x) localStorage.setItem(cleLienAtt(k), JSON.stringify(x)); else localStorage.removeItem(cleLienAtt(k)); } catch { /* stockage indisponible */ } }
+const texteSmsAtt = x => `Bonjour, voici l’attestation de stage de ${S.el.profil.prenom} (lycée Raymond Queneau, Yvetot) à vérifier et à signer avant le ${fmtDT(x.expire)}. Merci !\n${urlLienTuteur(x)}`;
+function blocLienAtt(k) {
+  const x = lienAtt(k);
+  if (!x) return `<p class="petit">Le dernier jour, envoie un lien par SMS à ton tuteur : sur son téléphone, l’entreprise vérifie l’attestation, indique le nombre de jours effectués, signe avec le doigt et peut ajouter la photo de son tampon. L’attestation signée revient ici et chez ton professeur.</p>
+    <div class="deux"><label>Téléphone portable du tuteur <span class="doux petit">(n’est pas enregistré)</span><input id="att_tel" type="tel" placeholder="06 12 34 56 78"></label>
+      <label>Le lien expire dans<select id="att_duree"><option value="24">24 heures</option><option value="48" selected>48 heures</option><option value="72">72 heures</option></select></label></div>
+    <div class="actions"><button type="button" class="btn" data-a="attLienCreer" data-p="${esc(k)}">📱 Créer le lien et l’envoyer par SMS</button></div>`;
+  return `<div class="lien-tuteur" id="attSigAttente" data-p="${esc(k)}"><p>⏳ <b>En attente de la signature de l’entreprise</b> · lien valable jusqu’au ${fmtDT(x.expire)}</p>
+    <div class="actions"><a class="btn sec" href="sms:${esc((x.tel || '').replace(/[^\d+]/g, ''))}?&body=${encodeURIComponent(texteSmsAtt(x))}">📱 Renvoyer le SMS</a>
+      <button type="button" class="btn sec" data-a="attLienCopier" data-p="${esc(k)}">📋 Copier le lien</button><button type="button" class="btn" data-a="attLienVerifier" data-p="${esc(k)}">🔄 Vérifier si c’est signé</button>
+      <button type="button" class="lien petit" style="display:inline" data-a="attLienAnnuler" data-p="${esc(k)}">Annuler le lien</button></div>
+    <p class="doux petit">La page vérifie toute seule toutes les 20 secondes.</p></div>`;
+}
+A.attApercu = async el => {
+  const k = el.dataset.p, id = lireIdentiteAtt();
+  ouvrirPdf(await fabriquerPdfAttestation(Object.assign(attDonnees(S.el, k), { eleve: id, etab: etabAtt() })), `Attestation de stage ${S.el.profil.prenom}.pdf`);
 };
+A.attLienCreer = async el => {
+  const k = el.dataset.p, d = S.el, id = lireIdentiteAtt(), tel = val('att_tel'), heures = +val('att_duree') || 48;
+  if (!id.nom) throw new Error('Indique ton nom de famille : il est écrit sur l’attestation.');
+  if (tel && !/^[\d\s+.()-]{8,20}$/.test(tel)) throw new Error('Numéro de téléphone invalide.');
+  toast('Préparation du lien…');
+  const cle = CONV.nouvelleCle(), att = attDonnees(d, k), dem = demandeDePeriode(d, k);
+  const chiffre = await CONV.chiffrer({ att, ident: id, etab: etabAtt(), eleve: `${id.prenom} ${id.nom.toUpperCase()}`.trim(), classe: id.classe, entreprise: att.entreprise }, cle);
+  const r = await api('POST', '/api/protosig/creer', { chiffre, heures, entrepriseId: (dem && dem.entrepriseId) || undefined });
+  const x = { id: r.id, cle, expire: r.expire, tel, ident: id };
+  memoriserLienAtt(k, x); journal(`Attestation de stage envoyée à l’entreprise pour signature (${att.entreprise || 'entreprise'})`); render();
+  location.href = `sms:${tel.replace(/[^\d+]/g, '')}?&body=${encodeURIComponent(texteSmsAtt(x))}`;
+};
+A.attLienCopier = async el => {
+  const x = lienAtt(el.dataset.p); if (!x) return;
+  try { await navigator.clipboard.writeText(urlLienTuteur(x)); toast('Lien copié : colle-le dans un SMS ou un e-mail au tuteur'); } catch { prompt('Copie ce lien :', urlLienTuteur(x)); }
+};
+A.attLienAnnuler = async el => {
+  const k = el.dataset.p, x = lienAtt(k); if (!x || !confirm('Annuler ce lien ? L’entreprise ne pourra plus signer avec.')) return;
+  try { await api('POST', '/api/protosig/supprimer', { id: x.id }); } catch { /* déjà expiré */ }
+  memoriserLienAtt(k, null); render(); toast('Lien annulé');
+};
+// Signature reçue : l'attestation signée est fabriquée sur cet appareil (avec le nom de l'élève) puis déposée pour le professeur.
+async function verifierLienAtt(k, silencieux) {
+  const x = lienAtt(k); if (!x) return;
+  let r;
+  try { r = await api('POST', '/api/protosig/etat', { id: x.id }); }
+  catch (e) { if (/expir|introuvable/i.test(e.message)) { memoriserLienAtt(k, null); render(); } if (!silencieux) throw e; return; }
+  if (!r.signe) { if (!silencieux) toast('Pas encore signé.'); return; }
+  const s = await CONV.dechiffrer(r.sig, x.cle), donnees = Object.assign(attDonnees(S.el, k), s.att || {});
+  const pdf = new Uint8Array(await fabriquerPdfAttestation(Object.assign({}, donnees, { eleve: x.ident || identiteAtt(S.el), etab: etabAtt(), sig: { img: s.img, cachet: s.cachet, nom: s.nom, fonction: s.fonction, date: s.date } })));
+  S.el.attestation = Object.assign(DEF.attestation(), await api('POST', '/api/fichier/deposer', { type: 'attestation', periode: k, pdf: enBase64(pdf) }));
+  const per = S.el.attestation.periodes = S.el.attestation.periodes || {};
+  per[k] = Object.assign(per[k] || {}, { donnees: s.att || {}, signature: { nom: s.nom, fonction: s.fonction, date: s.date, mode: 'lien' } });
+  await sauver('attestation');
+  try { await api('POST', '/api/protosig/supprimer', { id: x.id }); } catch { /* */ }
+  memoriserLienAtt(k, null); journal('Attestation de stage complétée et signée à distance par l’entreprise'); render();
+  toast('✅ L’entreprise a signé : ton attestation est transmise à ton professeur');
+}
+A.attLienVerifier = el => verifierLienAtt(el.dataset.p, false);
+setInterval(() => { const z = document.getElementById('attSigAttente'); if (z && !document.hidden) verifierLienAtt(z.dataset.p, true).catch(() => {}); }, 20000);
 
-/* Dépôt de l'attestation signée : une photo est mise en page dans un PDF (A4) avant l'envoi. */
+/* Attestation signée sur papier : une photo est mise en page dans un PDF (A4) avant l'envoi. */
 async function imageVersPdf(fichier) {
   const url = URL.createObjectURL(fichier), img = new Image();
   try { await new Promise((ok, ko) => { img.onload = ok; img.onerror = () => ko(new Error('Image illisible : reprends la photo.')); img.src = url; }); } finally { setTimeout(() => URL.revokeObjectURL(url), 1000); }
@@ -183,14 +264,56 @@ async function imageVersPdf(fichier) {
   return new Uint8Array(await doc.save());
 }
 C.deposerAttestation = async el => {
-  const f = el.files[0]; el.value = '';
+  const f = el.files[0], k = el.dataset.p; el.value = '';
   if (!f) return;
   toast('Préparation du document…');
   const o = /^image\//.test(f.type) ? await imageVersPdf(f) : new Uint8Array(await f.arrayBuffer());
   if (String.fromCharCode(...o.subarray(0, 5)) !== '%PDF-') throw new Error('Choisis une photo ou un fichier PDF.');
   if (o.length > MAX_PDF) throw new Error(`Fichier trop lourd (${tailleLisible(o.length)}) : 4 Mo maximum.`);
   toast('Envoi de l’attestation…');
-  const d = await api('POST', '/api/fichier/deposer', { type: 'attestation', pdf: enBase64(o) });
-  S.el.attestation = Object.assign(DEF.attestation(), d);
-  journal('Attestation de stage signée déposée'); render(); toast('Attestation déposée : ton professeur est prévenu');
+  S.el.attestation = Object.assign(DEF.attestation(), await api('POST', '/api/fichier/deposer', { type: 'attestation', periode: k, pdf: enBase64(o) }));
+  journal('Attestation de stage signée déposée (papier)'); render(); toast('Attestation déposée : ton professeur est prévenu');
 };
+
+/* ---------- Professeur : attestation de chaque période (correction, consultation, validation) ---------- */
+const zoneAtt = k => [...document.querySelectorAll('.att-prof')].find(z => z.dataset.k === k);
+async function mutAttestation(eleveId, k, fn) {
+  const cle = `eleve/${eleveId}/attestation`, doc = Object.assign(DEF.attestation(), (await getDoc(cle)) || {});
+  doc.periodes = doc.periodes || {}; doc.periodes[k] = doc.periodes[k] || {}; fn(doc.periodes[k]);
+  await putDoc(cle, doc); return doc;
+}
+function dosAttestation(e) {
+  const d = e.d, ps = periodesEleve(d);
+  if (!ps.length) return '<p class="doux">Les dates de stage de la classe ne sont pas encore fixées.</p>';
+  return `<p class="doux">Une attestation par période (modèle Annexe 3), pré-remplie par l’application. Corrigez-la si besoin <b>avant</b> que l’élève envoie le lien de signature à l’entreprise : l’entreprise la vérifie, la complète et la signe. Le nom de famille et la date de naissance de l’élève ne sont pas enregistrés par l’application : ils sont ajoutés sur l’appareil de l’élève.</p>`
+    + ps.map(p => {
+      const k = cleP(p), a = attP(d, k), at = attDonnees(d, k), sg = a.signature;
+      return `<div class="att-prof" data-k="${esc(k)}"><h3>📅 ${esc(p.label || 'Stage')} <span class="petit doux">${fmt(p.debut)} → ${fmt(p.fin)}</span></h3>
+        <p>${a.fichierLe ? `✅ Signée${sg ? ` par <b>${esc(sg.nom)}</b>${sg.fonction ? ` (${esc(sg.fonction)})` : ''} le ${fmtDT(sg.date)}` : ` (document déposé le ${fmtDT(a.fichierLe)})`}
+          <button class="btn mini" data-a="voirAttProf" data-p="${esc(k)}">👁️ Voir l’attestation signée</button>` : '⬜ Pas encore signée.'}</p>
+        <details ${a.fichierLe ? '' : 'open'}><summary><b>Informations de l’attestation</b>${a.majProf ? ` <span class="petit doux">(corrigées par ${esc(a.majProf.par)} le ${fmtDT(a.majProf.date)})</span>` : ''}</summary>
+          <div class="deux">${[...CHAMPS_ATT_ENT, ...CHAMPS_ATT_PERIODE].map(([c, l, type]) => `<label>${esc(l)}<input class="att_c" data-champ="${c}" ${type === 'date' ? 'type="date"' : type === 'number' ? 'type="number" min="0"' : ''} value="${esc(at[c] || '')}"></label>`).join('')}</div>
+          <div class="actions"><button class="btn mini" data-a="attSauverProf" data-p="${esc(k)}">Enregistrer les informations</button><button class="btn mini sec" data-a="attApercuProf" data-p="${esc(k)}">👁️ Aperçu</button></div></details>
+        ${blocCorrection(a)}
+        <label>Commentaire pour l’élève<textarea class="att_com" rows="2">${esc(a.correction ? a.correction.commentaire : '')}</textarea></label>
+        <label><input type="checkbox" class="att_valide" ${a.valide ? 'checked' : ''}>Attestation vérifiée et validée</label>
+        <button class="btn mini" data-a="attValiderProf" data-p="${esc(k)}">Enregistrer</button></div>`;
+    }).join('');
+}
+A.attSauverProf = async el => {
+  const e = eleveOuvert(), k = el.dataset.p, z = zoneAtt(k), def = attDefaut(e.d, k);
+  // Seules les valeurs différentes du pré-remplissage sont gardées : le reste suit les données de l'application.
+  const v = Object.fromEntries([...z.querySelectorAll('.att_c')].map(i => [i.dataset.champ, i.value.trim()]).filter(([c, x]) => x !== (def[c] || '')));
+  e.d.attestation = await mutAttestation(e.id, k, pa => { pa.donnees = v; pa.majProf = { par: nomComplet(S.user), date: maintenant() }; });
+  render(); toast('Attestation mise à jour');
+};
+A.attApercuProf = async el => {
+  const e = eleveOuvert(), k = el.dataset.p;
+  ouvrirPdf(await fabriquerPdfAttestation(Object.assign(attDonnees(e.d, k), { eleve: { prenom: e.d.profil.prenom, nom: e.d.profil.nom, classe: (classeEleve(e.d) || {}).nom || '' }, etab: etabAtt() })), `Attestation ${nomEleve(e)}.pdf`);
+};
+A.attValiderProf = async el => {
+  const e = eleveOuvert(), k = el.dataset.p, z = zoneAtt(k);
+  e.d.attestation = await mutAttestation(e.id, k, pa => { pa.correction = { par: nomComplet(S.user), date: maintenant(), commentaire: z.querySelector('.att_com').value.trim() }; pa.valide = z.querySelector('.att_valide').checked; pa.aRelire = false; });
+  render(); toast('Enregistré');
+};
+A.voirAttProf = el => { const e = eleveOuvert(); return ouvrirVisionneuse({ eleveId: e.id, type: 'attestation', periode: el.dataset.p, prof: false, titre: `Attestation de stage de ${nomEleve(e)}` }); };

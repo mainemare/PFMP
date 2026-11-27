@@ -50,7 +50,7 @@ A.retirerFichier = async el => {
   S.el[t] = Object.assign(DEF[t](), await api('POST', '/api/fichier/supprimer', { type: t }));
   journal(`${TITRES[t]} retiré`); render(); toast('Document retiré');
 };
-A.voirFichier = el => ouvrirVisionneuse({ eleveId: S.user.id, type: el.dataset.t, prof: false, titre: { cv: 'Mon CV', lettre: 'Ma lettre de motivation', attestation: 'Mon attestation de stage' }[el.dataset.t] || TITRES[el.dataset.t] });
+A.voirFichier = el => ouvrirVisionneuse({ eleveId: S.user.id, type: el.dataset.t, periode: el.dataset.p || undefined, prof: false, titre: { cv: 'Mon CV', lettre: 'Ma lettre de motivation', attestation: 'Mon attestation de stage' }[el.dataset.t] || TITRES[el.dataset.t] });
 
 /* ---------- Professeur : ouvrir et annoter ---------- */
 A.annoterFichier = el => {
@@ -62,7 +62,9 @@ A.annoterFichier = el => {
 let V = null;   // document ouvert
 const OUTILS = [['', '✋', 'Lire'], ['note', '💬', 'Remarque'], ['surligneur', '🖍️', 'Surligner'], ['stylo', '✏️', 'Stylo'], ['gomme', '🧽', 'Gomme']];
 async function ouvrirVisionneuse(o) {
-  const [, f, doc] = await Promise.all([chargerPdfJs(), api('POST', '/api/fichier/lire', { eleveId: o.eleveId, type: o.type }), getDoc(`eleve/${o.eleveId}/${o.type}`)]);
+  const [, f, docTout] = await Promise.all([chargerPdfJs(), api('POST', '/api/fichier/lire', { eleveId: o.eleveId, type: o.type, periode: o.periode }), getDoc(`eleve/${o.eleveId}/${o.type}`)]);
+  // Attestation : un document par période de stage (consultation seulement)
+  const doc = o.periode ? ((docTout && docTout.periodes) || {})[o.periode] || {} : docTout;
   const a = (doc && doc.annotations) || {};
   V = Object.assign(o, { doc: doc || {}, fichierLe: doc ? doc.fichierLe : null, outil: '', modifie: false, pages: [],
     notes: (a.notes || []).map(n => Object.assign({}, n)), traits: (a.traits || []).map(t => Object.assign({}, t)), annule: [] });

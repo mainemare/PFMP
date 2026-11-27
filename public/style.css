@@ -399,6 +399,12 @@ header.top nav.nav-eleve ~ .qui { margin-left: auto; }
 .barre-txt { grid-area: txt; line-height: 1.25; }
 .barre-ligne.sans .barre-txt, .barre-ligne.sans > .petit { grid-area: txt; }
 
+/* ---------- Attestation de stage ---------- */
+.att-resume th { text-align: left; font-weight: 600; padding: 4px 12px 4px 0; white-space: nowrap; vertical-align: top; }
+.att-resume td { padding: 4px 0; }
+.att-prof { border: 1px solid #e5e7eb; border-radius: 12px; padding: 12px 14px; margin: 12px 0; }
+.att-prof h3 { margin-top: 0; }
+.att-prof details { margin: 8px 0; }
 /* ---------- Périodes de stage séparées ---------- */
 .onglets-periodes { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
 .onglets-periodes button { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; text-align: left; font: inherit; cursor: pointer; padding: 10px 14px; border-radius: 12px; border: 2px solid #e5e7eb; background: #fff; color: inherit; min-width: 180px; }

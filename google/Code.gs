@@ -180,7 +180,7 @@ function supprimerFichiersDe(eleveId) {
   });
   // Photos du journal de bord
   table().m.forEach((x, cle) => {
-    if ((cle.indexOf('eleve/' + eleveId + '/photo-') !== 0 && cle.indexOf('eleve/' + eleveId + '/annexe-') !== 0) || !x.texte || x.texte === 'null') return;
+    if ((cle.indexOf('eleve/' + eleveId + '/photo-') !== 0 && cle.indexOf('eleve/' + eleveId + '/annexe-') !== 0 && cle.indexOf('eleve/' + eleveId + '/fichier-attestation-') !== 0) || !x.texte || x.texte === 'null') return;
     const m = JSON.parse(x.texte); if (m && m.id) { try { DriveApp.getFileById(m.id).setTrashed(true); } catch (e) { /* deja supprime */ } }
   });
 }
@@ -224,8 +224,12 @@ function routesFichier(route, b, user, estProf) {
   const eleveId = user.role === 'eleve' ? user.id : String(b.eleveId || '');
   if (!/^[a-f0-9]{12}$/.test(eleveId) || (!estProf && eleveId !== user.id)) return ko(403, 'interdit');
   if (estProf && !voitEleve(user, eleveId)) return ko(403, 'interdit');
-  const cleMeta = 'eleve/' + eleveId + '/fichier-' + type, cleDoc = 'eleve/' + eleveId + '/' + type;
+  // Attestation de stage : un document par periode (fichier-attestation-<periode>), rangé dans « periodes » du dossier.
+  const per = type === 'attestation' && b.periode ? String(b.periode) : '';
+  if (per && !/^[A-Za-z0-9_-]{1,40}$/.test(per)) return ko(400, 'invalide');
+  const cleMeta = 'eleve/' + eleveId + '/fichier-' + type + (per ? '-' + per : ''), cleDoc = 'eleve/' + eleveId + '/' + type;
   const meta = JSON.parse(getDoc(cleMeta));
+  const partie = d => { if (!per) return d; d.periodes = d.periodes || {}; return (d.periodes[per] = d.periodes[per] || {}); };
 
   if (route === 'POST /api/fichier/lire') {
     if (!meta || !meta.id) return ko(404, 'introuvable');
@@ -239,19 +243,19 @@ function routesFichier(route, b, user, estProf) {
     if (o.length < 5 || o.length > MAX_PDF || String.fromCharCode(o[0], o[1], o[2], o[3], o[4]) !== '%PDF-') return ko(400, 'pas_un_pdf');
     if (meta && meta.id) { try { DriveApp.getFileById(meta.id).setTrashed(true); } catch (e) { /* deja supprime */ } }
     const date = new Date().toISOString();
-    const f = dossierFichiers().createFile(Utilities.newBlob(o, 'application/pdf', eleveId + '-' + type + '.pdf'));
+    const f = dossierFichiers().createFile(Utilities.newBlob(o, 'application/pdf', eleveId + '-' + type + (per ? '-' + per : '') + '.pdf'));
     setDoc(cleMeta, JSON.stringify({ id: f.getId(), date: date, taille: o.length }));
     // Nouvelle version : a relire ; les annotations portaient sur l'ancienne version.
-    const d = JSON.parse(getDoc(cleDoc)) || {};
-    d.deposeLe = date; d.fichierLe = date; d.taille = o.length; d.aRelire = true; d.valide = false; d.annotations = null;
+    const d = JSON.parse(getDoc(cleDoc)) || {}, x = partie(d);
+    x.deposeLe = date; x.fichierLe = date; x.taille = o.length; x.aRelire = true; x.valide = false; x.annotations = null;
     setDoc(cleDoc, JSON.stringify(d));
     return ok(d);
   }
   if (route === 'POST /api/fichier/supprimer') {
     if (meta && meta.id) { try { DriveApp.getFileById(meta.id).setTrashed(true); } catch (e) { /* deja supprime */ } }
     setDoc(cleMeta, 'null');
-    const d = JSON.parse(getDoc(cleDoc)) || {};
-    d.deposeLe = null; d.fichierLe = null; d.taille = 0; d.aRelire = false; d.annotations = null;
+    const d = JSON.parse(getDoc(cleDoc)) || {}, x = partie(d);
+    x.deposeLe = null; x.fichierLe = null; x.taille = 0; x.aRelire = false; x.annotations = null;
     setDoc(cleDoc, JSON.stringify(d));
     return ok(d);
   }

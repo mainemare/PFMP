@@ -298,3 +298,17 @@ Limites
   - Le protocole d'accord envoye par un eleve part vers tous les referents de sa classe qui ont indique leur e-mail.
   Mise en place : mettez a jour Code.gs puis Deployer > Gerer les deploiements > (crayon) > Nouvelle version.
   Puis, dans « Classes et dates », verifiez les referents de chaque classe (ex. TP2 : cochez seulement ses referents).
+
+20. ATTESTATION DE STAGE (ANNEXE 3) : PRE-REMPLIE, CORRIGEE PAR LE PROFESSEUR, SIGNEE PAR L'ENTREPRISE PAR LIEN
+  - Une attestation par periode, sur le modele « ATTESTATION DE STAGE - Annexe 3 » du lycee (mise en page reproduite, vierge).
+  - Pre-remplissage : entreprise, adresse, SIRET, representant et fonction (protocole de la periode et fichier des entreprises),
+    numero de periode, dates, duree effective (jours travailles du protocole, moins les jours « non travaille » du journal
+    de bord), lieu et date de signature (dernier jour). Lycee et chef d'etablissement : parametres de l'etablissement.
+  - Professeur (dossier de l'eleve, onglet « Attestation ») : corrige les informations avant l'envoi, voit l'attestation
+    signee, commente et valide.
+  - Eleve (Fin du stage) : indique son nom de famille et sa date de naissance (gardes sur son appareil, jamais sur le serveur),
+    puis envoie le lien par SMS au tuteur (valable 24, 48 ou 72 h, une seule utilisation, chiffre).
+  - Entreprise : verifie et complete (jours effectues, gratification...), relit l'attestation, signe et ajoute son tampon.
+    L'attestation signee (PDF) est fabriquee sur l'appareil de l'eleve et rangee dans le dossier prive du Drive.
+    Signature papier toujours possible : l'eleve depose une photo ou un PDF.
+  Mise en place : mettez a jour Code.gs puis Deployer > Gerer les deploiements > (crayon) > Nouvelle version.
