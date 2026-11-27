@@ -10,7 +10,7 @@ const DATA = process.env.DATA_DIR || path.join(__dirname, 'donnees');
 const DOCS = path.join(DATA, 'docs');
 const USERS_FILE = path.join(DATA, 'comptes.json');
 const CONFIG_FILE = path.join(DATA, 'config.json');
-const SECTIONS = ['profil', 'cv', 'lettre', 'memento', 'demandes', 'journal', 'etat', 'prof', 'bord', 'portfolio', 'attestation'];
+const SECTIONS = ['profil', 'cv', 'lettre', 'memento', 'demandes', 'journal', 'etat', 'prof', 'bord', 'portfolio', 'attestation', 'suiviprof'];
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.webmanifest': 'application/manifest+json; charset=utf-8' };
 const SESSION_MS = 12 * 3600 * 1000;
 
@@ -178,6 +178,13 @@ async function traiter(req, res) {
     const p = JSON.parse(getDoc(`eleve/${id}/profil`)) || {}, cl = cls.find(c => c.id === (p.classeId || (users.find(u => u.id === id) || {}).classeId)), r = referentsDe(cl);
     return !cl || !r.length || r.includes(user.id) || !!(cl.visiteurs && cl.visiteurs[id] === user.id);
   };
+  // Commentaires de suivi des professeurs : referents de la classe et DDFPT seulement.
+  const voitSuivi = (id, cls = lesClasses()) => {
+    if (user.role === 'ddfpt') return true;
+    if (user.role !== 'prof') return false;
+    const p = JSON.parse(getDoc(`eleve/${id}/profil`)) || {}, cl = cls.find(c => c.id === (p.classeId || (users.find(u => u.id === id) || {}).classeId)), r = referentsDe(cl);
+    return !cl || !r.length || r.includes(user.id);
+  };
 
   // Eleve : entreprise trouvee par lui-meme, proposee pour la base (validation par un prof ou le DDFPT).
   if (route === 'POST /api/entreprises/proposer') {
@@ -234,7 +241,7 @@ async function traiter(req, res) {
     if (!estProf) return erreur(req, res, 403, 'interdit');
     const cls = lesClasses();
     const parts = users.filter(u => u.role === 'eleve' && voitEleve(u.id, cls)).map(u =>
-      `{"id":"${u.id}","identifiant":${JSON.stringify(u.identifiant)},"docs":{${SECTIONS.map(s => `"${s}":${getDoc(`eleve/${u.id}/${s}`)}`).join(',')}}}`);
+      `{"id":"${u.id}","identifiant":${JSON.stringify(u.identifiant)},"docs":{${SECTIONS.map(s => `"${s}":${s === 'suiviprof' && !voitSuivi(u.id, cls) ? 'null' : getDoc(`eleve/${u.id}/${s}`)}`).join(',')}}}`);
     return envoyer(req, res, 200, '[' + parts.join(',') + ']');
   }
   if (route === 'POST /api/admin/motdepasse' || route === 'POST /api/admin/supprimer') {
@@ -268,6 +275,7 @@ async function traiter(req, res) {
       if (!estProf && user.id !== me[1]) return erreur(req, res, 403, 'interdit');
       if (!users.some(u => u.id === me[1])) return erreur(req, res, 404, 'introuvable');
       if (estProf && !voitEleve(me[1])) return erreur(req, res, 403, 'interdit');
+      if (me[2] === 'suiviprof' && !voitSuivi(me[1])) return erreur(req, res, 403, 'interdit');
       ecriture = estProf || me[2] !== 'prof';
     } else return erreur(req, res, 404, 'introuvable');
 

@@ -343,3 +343,10 @@ Limites
     meme s'il n'est pas referent de la classe. Il n'a acces qu'aux eleves qui lui sont attribues ; il ne peut pas modifier la classe.
   - L'attribution est rangee dans la classe (« Classes et dates ») : elle ne contient aucune donnee personnelle supplementaire.
   Mise en place : mettez a jour Code.gs puis Deployer > Gerer les deploiements > (crayon) > Nouvelle version.
+
+24. COMMENTAIRES DE SUIVI DES PROFESSEURS
+  - Dossier de l'eleve, onglet « Demandes » : sous chaque entreprise, « Ajouter un commentaire » (date de l'appel, personne
+    jointe, commentaire). Onglet « Suivi profs » : tous les commentaires de l'eleve, y compris le suivi general.
+  - Ranges a part (eleve/<id>/suiviprof) : seuls les professeurs referents de la classe et le DDFPT les lisent et les ecrivent.
+    L'eleve et un professeur seulement charge de la visite n'y ont pas acces (controle par le serveur).
+  Mise en place : mettez a jour Code.gs puis Deployer > Gerer les deploiements > (crayon) > Nouvelle version.

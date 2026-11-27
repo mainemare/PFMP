@@ -8,7 +8,9 @@
  */
 const FEUILLE = 'donnees';
 const MORCEAU = 40000;                       // une cellule Google Sheets contient au plus 50 000 caracteres
-const SECTIONS = ['profil', 'cv', 'lettre', 'memento', 'demandes', 'journal', 'etat', 'prof', 'bord', 'portfolio', 'attestation'];
+// suiviprof : commentaires de suivi des professeurs (appels aux entreprises) ; jamais lisible par l'eleve, ni par un professeur
+// seulement charge de la visite : professeurs referents de la classe et DDFPT uniquement.
+const SECTIONS = ['profil', 'cv', 'lettre', 'memento', 'demandes', 'journal', 'etat', 'prof', 'bord', 'portfolio', 'attestation', 'suiviprof'];
 const SESSION_MS = 12 * 3600 * 1000;
 const ITERATIONS = 300;
 
@@ -293,6 +295,7 @@ function voitClasse(user, classeId, classes) {
   return !cl || !r.length || r.indexOf(user.id) >= 0;
 }
 // Le professeur charge de la visite (classe.visiteurs[eleveId], attribue par un referent ou le DDFPT) voit aussi cet eleve.
+function classeIdEleve(id) { const p = JSON.parse(getDoc('eleve/' + id + '/profil')) || {}; return p.classeId || (comptes().find(u => u.id === id) || {}).classeId; }
 function voitEleve(user, eleveId, classes) {
   if (user.role === 'eleve') return user.id === eleveId;
   const p = JSON.parse(getDoc('eleve/' + eleveId + '/profil')) || {}, cls = classes || lesClasses();
@@ -869,7 +872,10 @@ function router(m, chemin, route, b, jeton) {
     const cls = lesClasses();
     return ok(comptes().filter(u => u.role === 'eleve' && voitEleve(user, u.id, cls)).map(u => {
       const docs = {};
-      SECTIONS.forEach(s => { docs[s] = JSON.parse(getDoc('eleve/' + u.id + '/' + s)); });
+      SECTIONS.forEach(s => {
+        if (s === 'suiviprof' && !voitClasse(user, (docs.profil || {}).classeId || u.classeId, cls)) { docs[s] = null; return; }
+        docs[s] = JSON.parse(getDoc('eleve/' + u.id + '/' + s));
+      });
       return { id: u.id, identifiant: u.identifiant, docs: docs };
     }));
   }
@@ -906,6 +912,7 @@ function router(m, chemin, route, b, jeton) {
       if (!estProf && user.id !== me[1]) return ko(403, 'interdit');
       if (!comptes().some(u => u.id === me[1])) return ko(404, 'introuvable');
       if (estProf && !voitEleve(user, me[1])) return ko(403, 'interdit');
+      if (me[2] === 'suiviprof' && !(estProf && voitClasse(user, classeIdEleve(me[1])))) return ko(403, 'interdit');
       droitEcriture = estProf || me[2] !== 'prof';
     } else return ko(404, 'introuvable');
 

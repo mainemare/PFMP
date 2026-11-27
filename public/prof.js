@@ -9,7 +9,7 @@ const nomProf = id => { const p = S.profs.find(x => x.id === id); return p ? nom
 const eleveOuvert = () => S.eleves.find(e => e.id === S.dossier);
 
 async function chargerEleves() {
-  S.eleves = (await api('GET', '/api/eleves')).map(e => ({ id: e.id, identifiant: e.identifiant, d: normaliser(e.docs) }))
+  S.eleves = (await api('GET', '/api/eleves')).map(e => ({ id: e.id, identifiant: e.identifiant, d: normaliser(e.docs), suivi: ((e.docs && e.docs.suiviprof) || {}).notes || [] }))
     .sort((a, b) => (a.d.profil.nom + a.d.profil.prenom).localeCompare(b.d.profil.nom + b.d.profil.prenom, 'fr'));
   if (S.codeEleve === undefined) { try { const c = (await api('GET', '/api/admin/codes')) || {}; S.codeEleve = c.codeEleve || ''; S.codeOffres = c.codeOffres || ''; } catch { S.codeEleve = ''; S.codeOffres = ''; } }
   await Promise.all([chargerConventions(), chargerEtab(), chargerPropositions(), chargerVisites(), chargerOffresProposees()]);
@@ -103,8 +103,9 @@ function vueDossier() {
   { const pa = Object.values((d.attestation && d.attestation.periodes) || {}); onglets.splice(onglets.findIndex(o => o[0] === 'conseils'), 0, ['attestation', `Attestation${pa.some(x => x.fichierLe && !x.valide) ? ' 🟣' : pa.some(x => x.valide) ? ' ✅' : ''}`]); }
   { const evs = Object.values((d.prof && d.prof.evaluations) || {}), v = evs.filter(x => x.valide).map(x => noteEval(x)).filter(x => x.n).pop();
     onglets.splice(onglets.findIndex(o => o[0] === 'attestation') + 1, 0, ['evaluation', `Évaluation${v ? ` (${fmtN(v.sur20)}/20)` : evs.length ? ' ✏️' : ''}`]); }
-  if (S.onglet === 'bord' && S.user.role === 'ddfpt') S.onglet = 'synthese';
-  const corps = { synthese: dosSynthese, suivi: dosSuivi, cv: () => dosDoc(e, 'cv'), lettre: () => dosDoc(e, 'lettre'), memento: () => dosDoc(e, 'memento'), attestation: dosAttestation, evaluation: dosEvaluation, conseils: dosConseils, activite: dosActivite, bord: dosBord, portfolio: dosPortfolio }[S.onglet](e);
+  if (voitSuivi(e)) onglets.splice(onglets.findIndex(o => o[0] === 'suivi') + 1, 0, ['suiviprof', `🗒️ Suivi profs${e.suivi.length ? ` (${e.suivi.length})` : ''}`]);
+  if ((S.onglet === 'bord' && S.user.role === 'ddfpt') || (S.onglet === 'suiviprof' && !voitSuivi(e))) S.onglet = 'synthese';
+  const corps = { synthese: dosSynthese, suivi: dosSuivi, cv: () => dosDoc(e, 'cv'), lettre: () => dosDoc(e, 'lettre'), memento: () => dosDoc(e, 'memento'), attestation: dosAttestation, evaluation: dosEvaluation, conseils: dosConseils, activite: dosActivite, bord: dosBord, portfolio: dosPortfolio, suiviprof: dosSuiviProf }[S.onglet](e);
   return `<div class="overlay" data-a="fond" data-dossier="1"><div class="fenetre large" role="dialog" aria-modal="true"><button class="fermer" data-a="fermerDossier" aria-label="Fermer">✕</button>
     <div class="dossier-tete" style="--c:${NIV[n].c}"><h2>${esc(nomEleve(e))} <span class="badge" style="background:${esc(cl ? cl.couleur : '#64748b')}">${esc(cl ? cl.nom : 'Sans classe')}</span>
       ${enUrgence(d) ? '<span class="badge urg">🚨 PLAN D’URGENCE</span>' : ''}</h2>${barre(n, false, d)}
@@ -148,7 +149,7 @@ A.supEleve = async () => {
 };
 const dosSuivi = e => blocPriseEnMain(e) + dosSuiviListe(e);
 const dosSuiviListe = e => {
-  const d = e.d, ps = periodesEleve(d), carte = x => blocProtocoleProf(e, x) + blocPronoteProf(e, x) + blocValiderSansDoc(e, x) + blocConventionProf(e, x) + carteDemande(x, true);
+  const d = e.d, ps = periodesEleve(d), carte = x => blocProtocoleProf(e, x) + blocPronoteProf(e, x) + blocValiderSansDoc(e, x) + blocConventionProf(e, x) + carteDemande(x, true) + blocSuiviDemande(e, x);
   if (!d.demandes.liste.length) return '<p class="doux">L’élève n’a encore sélectionné aucune entreprise.</p>';
   if (ps.length < 2) return [...d.demandes.liste].reverse().map(carte).join('');
   // Plusieurs périodes : les demandes sont séparées, période par période (la période en cours d'abord).
@@ -811,4 +812,54 @@ function statsParClasse() {
 A.statsClasse = el => {
   S.f.classe = el.dataset.cl; S.f.niveau = el.dataset.n == null ? '' : el.dataset.n; S.f.q = ''; S.f.urg = false;
   render(); if (el.dataset.n != null) { const l = $('#liste'); if (l) l.scrollIntoView({ behavior: 'smooth' }); }
+};
+
+/* ---------- Commentaires de suivi des professeurs (appels aux entreprises) ----------
+ * Rangés à part (eleve/<id>/suiviprof) : visibles et modifiables par les professeurs référents de la classe et le DDFPT,
+ * jamais par l'élève ni par un professeur seulement chargé de la visite (contrôlé par le serveur). */
+const voitSuivi = e => S.user.role === 'ddfpt' || estReferentDe(e);
+const libEnt = (e, id) => { const x = e.d.demandes.liste.find(d => d.id === id); return x ? x.nom : ''; };
+function noteSuiviHTML(e, n, avecEnt) {
+  return `<div class="note-suivi"><div class="petit doux">📞 ${fmt(n.date)}${avecEnt && n.demandeId ? ` · <b>${esc(libEnt(e, n.demandeId) || n.entreprise || 'Entreprise retirée')}</b>` : avecEnt && !n.demandeId ? ' · <b>Suivi général</b>' : ''}${n.interlocuteur ? ` · avec ${esc(n.interlocuteur)}` : ''} · ${esc(n.par)}
+      ${n.parId === S.user.id || S.user.role === 'ddfpt' ? `<button type="button" class="lien" style="display:inline" data-a="suiviSup" data-id="${n.id}">supprimer</button>` : ''}</div>${esc(n.texte).replace(/\n/g, '<br>')}</div>`;
+}
+function blocSuiviDemande(e, x) {
+  if (!voitSuivi(e)) return '';
+  const l = e.suivi.filter(n => n.demandeId === x.id).sort((a, b) => b.date.localeCompare(a.date) || b.creeLe.localeCompare(a.creeLe));
+  return `<div class="suivi-demande"><div class="tete-suivi"><b>🗒️ Suivi des professeurs — ${esc(x.nom)}</b><span class="petit doux">visible des référents et du DDFPT, pas de l’élève</span>
+      <button type="button" class="btn mini sec" data-a="suiviNouveau" data-d="${x.id}">📞 Ajouter un commentaire</button></div>
+    ${l.length ? l.map(n => noteSuiviHTML(e, n, false)).join('') : '<p class="petit doux" style="margin:4px 0 0">Aucun commentaire de suivi pour cette entreprise.</p>'}</div>`;
+}
+function dosSuiviProf(e) {
+  const l = [...e.suivi].sort((a, b) => b.date.localeCompare(a.date) || b.creeLe.localeCompare(a.creeLe));
+  return `<p class="doux">Commentaires des professeurs quand ils appellent l’entreprise (ou sur le suivi de l’élève). 🔒 Visibles seulement par les professeurs référents de la classe et le DDFPT : l’élève ne les voit pas.</p>
+    <div class="actions" style="margin-top:0"><button class="btn" data-a="suiviNouveau" data-d="">📞 Ajouter un commentaire de suivi</button></div>
+    ${l.length ? l.map(n => noteSuiviHTML(e, n, true)).join('') : '<p class="doux">Aucun commentaire de suivi pour le moment.</p>'}`;
+}
+A.suiviNouveau = el => {
+  const e = eleveOuvert(), d0 = el.dataset.d || '';
+  modal(`<h2>📞 Commentaire de suivi — ${esc(nomEleve(e))}</h2>
+    <p class="petit doux">🔒 Visible par les professeurs référents de la classe et le DDFPT seulement.</p>
+    <div class="deux"><label>Entreprise<select id="sv_dem"><option value="">— Suivi général de l’élève —</option>${e.d.demandes.liste.map(x => `<option value="${x.id}" ${x.id === d0 ? 'selected' : ''}>${esc(x.nom)}</option>`).join('')}</select></label>
+      <label>Date de l’appel<input id="sv_date" type="date" value="${today()}" max="${today()}"></label></div>
+    <label>Personne jointe <span class="doux petit">(facultatif)</span><input id="sv_qui" maxlength="120" placeholder="ex. M. Durand, chef d’atelier"></label>
+    <label>Commentaire<textarea id="sv_texte" rows="5" maxlength="3000" placeholder="Ce qui a été dit, ce qui est convenu, la suite à donner…"></textarea></label>
+    <div class="actions"><button class="btn" data-a="suiviSauver">Enregistrer</button><button class="btn sec" data-a="fermerModal">Annuler</button></div>`);
+  setTimeout(() => { const t = $('#sv_texte'); if (t) t.focus(); }, 50);
+};
+async function mutSuivi(e, fn) {
+  const k = `eleve/${e.id}/suiviprof`, frais = Object.assign({ notes: [] }, (await getDoc(k)) || {});
+  fn(frais.notes); await putDoc(k, frais); e.suivi = frais.notes;
+}
+A.suiviSauver = async () => {
+  const e = eleveOuvert(), texte = val('sv_texte'), dem = val('sv_dem');
+  if (!texte) throw new Error('Écrivez le commentaire.');
+  await mutSuivi(e, l => l.push({ id: uid(), demandeId: dem, entreprise: libEnt(e, dem), date: val('sv_date') || today(), interlocuteur: val('sv_qui'), texte,
+    par: nomComplet(S.user), parId: S.user.id, creeLe: maintenant() }));
+  modal(''); render(); toast('Commentaire de suivi enregistré');
+};
+A.suiviSup = async el => {
+  if (!confirm('Supprimer ce commentaire de suivi ?')) return;
+  await mutSuivi(eleveOuvert(), l => { const i = l.findIndex(n => n.id === el.dataset.id); if (i >= 0) l.splice(i, 1); });
+  render(); toast('Commentaire supprimé');
 };
