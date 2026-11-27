@@ -28,6 +28,7 @@ async function mutCommun(nom, fn) {
 function vueProf() {
   switch (S.vue) {
     case 'classes': return vueClasses();
+    case 'moncompte': return vueMonCompte();
     case 'entreprises': return vueBase();
     case 'carte': return vueCarteProf();
     case 'synthese': return vueSynthese();

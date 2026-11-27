@@ -41,7 +41,7 @@ const CODE_DDFPT = process.env.CODE_DDFPT || config.codeDdfpt;
 // ---------- Comptes ----------
 let users = fs.existsSync(USERS_FILE) ? JSON.parse(lire(USERS_FILE)) : [];
 const sauverUsers = () => ecrire(USERS_FILE, JSON.stringify(users));
-const userJson = u => JSON.stringify({ id: u.id, role: u.role, nom: u.nom, prenom: u.prenom, identifiant: u.identifiant, classeId: u.classeId || null, email: u.role !== 'eleve' ? (u.email || '') : undefined });
+const userJson = u => JSON.stringify({ id: u.id, role: u.role, nom: u.nom, prenom: u.prenom, identifiant: u.identifiant, classeId: u.classeId || null, email: u.email || '', tel: u.role !== 'eleve' ? (u.tel || '') : undefined });
 
 // ---------- Sessions : jetons signes, valables 12 h, qui survivent a un redemarrage ----------
 const signer = corps => crypto.createHmac('sha256', config.secret).update(corps).digest('base64url');
@@ -126,6 +126,8 @@ async function traiter(req, res) {
   if (route === 'GET /api/public/classes') return envoyer(req, res, 200, getDoc('commun/classes'));
   // Depot d'offres par les entreprises : seulement avec la version Google (google/Code.gs).
   if (route === 'POST /api/public/offre' || route === 'GET /api/public/secteurs') return erreur(req, res, 501, 'offre_indisponible');
+  // Mot de passe oublie : envoi d'e-mails seulement avec la version Google
+  if (route === 'POST /api/public/oubli' || route === 'POST /api/public/reinit') return erreur(req, res, 501, 'envoi_indisponible');
   if (route === 'GET /api/public/info') return envoyer(req, res, 200, JSON.stringify({ codeEleveRequis: true }));
 
   if (route === 'POST /api/inscription') {
@@ -190,6 +192,20 @@ async function traiter(req, res) {
   }
 
   if (route === 'GET /api/moi') return envoyer(req, res, 200, userJson(user));
+  if (route === 'POST /api/moi/profil') {
+    const b = await lireJson(req), email = String(b.email || '').trim().toLowerCase(), tel = String(b.tel || '').trim();
+    if (email && !/^[^\s@]{1,64}@[^\s@]{1,190}\.[a-z]{2,}$/.test(email)) return erreur(req, res, 400, 'email_invalide');
+    if (tel && !/^[\d\s+.()-]{8,20}$/.test(tel)) return erreur(req, res, 400, 'tel_invalide');
+    user.email = email; if (estProf) user.tel = tel; sauverUsers();
+    return envoyer(req, res, 200, userJson(user));
+  }
+  if (route === 'POST /api/moi/motdepasse') {
+    const b = await lireJson(req), nouveau = String(b.nouveau || '');
+    if (hacher(String(b.ancien || ''), user.sel) !== user.hash) return erreur(req, res, 403, 'ancien_incorrect');
+    if (nouveau.length < 6 || nouveau.length > 200) return erreur(req, res, 400, 'motdepasse_court');
+    user.sel = hex(16); user.hash = hacher(nouveau, user.sel); user.v = (user.v || 0) + 1; sauverUsers();
+    return envoyer(req, res, 200, `{"token":"${creerJeton(user)}","user":${userJson(user)}}`);
+  }
   if (route === 'POST /api/moi/email') {
     if (!estProf) return erreur(req, res, 403, 'interdit');
     const email = String((await lireJson(req)).email || '').trim().toLowerCase();

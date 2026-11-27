@@ -136,9 +136,15 @@ function supprimerDocs(prefixe) {
 }
 const comptes = () => JSON.parse(getDoc('systeme/comptes')) || [];
 const sauverComptes = l => setDoc('systeme/comptes', JSON.stringify(l));
-// L'adresse e-mail n'existe que pour les professeurs (jamais pour les eleves) et n'est renvoyee qu'au professeur lui-meme.
+// E-mail : professeurs et DDFPT ; pour un eleve, seulement s'il le choisit (uniquement pour recuperer son mot de passe).
+// Telephone : personnel seulement. Ces informations ne sont renvoyees qu'a la personne elle-meme.
 const userInfo = u => ({ id: u.id, role: u.role, nom: u.nom, prenom: u.prenom, identifiant: u.identifiant, classeId: u.classeId || null,
-  email: u.role !== 'eleve' ? (u.email || '') : undefined, chef: u.role === 'prof' || u.role === 'ddfpt' ? !!u.chef : undefined });
+  email: u.email || '', tel: u.role !== 'eleve' ? (u.tel || '') : undefined, chef: u.role === 'prof' || u.role === 'ddfpt' ? !!u.chef : undefined });
+// Adresse du site (lien de reinitialisation du mot de passe) : propriete URL_SITE, sinon le site du lycee.
+// Jamais fournie par le navigateur : un lien piege ne peut pas etre envoye au nom du lycee.
+const URL_SITE_DEFAUT = 'https://mainemare.github.io/PFMP/';
+const urlSite = () => PropertiesService.getScriptProperties().getProperty('URL_SITE') || URL_SITE_DEFAUT;
+const emailValide = e => /^[^\s@]{1,64}@[^\s@]{1,190}\.[a-z]{2,}$/.test(e);
 
 /* ---------- Conventions : contenu chiffre dans le navigateur, range dans un dossier Google Drive ----------
  * Le classeur ne garde que des informations de suivi (qui a signe, quand). Le contenu (identite de l'eleve,
@@ -325,6 +331,13 @@ function routesConvention(route, b, user, jeton) {
     return ok({ meta: resumeConv(m), chiffre: f.chiffre, sig: f.sig || {}, cleEleve: user && user.id === m.eleveId ? m.cleEleve : undefined });
   }
   if (!user && route !== 'POST /api/convention/signer') return null;
+  // Changement de mot de passe : l'eleve re-chiffre la cle de sa convention avec son nouveau mot de passe.
+  if (route === 'POST /api/convention/cle') {
+    const m = metaConv(String(b.id || ''));
+    if (!m || user.role !== 'eleve' || m.eleveId !== user.id) return ko(403, 'interdit');
+    const k = String(b.cleEleve || ''); if (!k || k.length > 20000) return ko(400, 'invalide');
+    m.cleEleve = k; sauverMetaConv(m); return ok({ ok: true });
+  }
 
   if (route === 'GET /api/conventions') {
     const l = toutesConventions().filter(m => m.statut !== 'annulee');
@@ -667,6 +680,41 @@ function router(m, chemin, route, b, jeton) {
     return ok({ ok: true });
   }
 
+  // Mot de passe oublie : lien envoye a l'adresse e-mail enregistree (valable 1 heure, une seule fois).
+  // La reponse est toujours la meme, que le compte existe ou non (on ne revele pas qui a un compte).
+  if (route === 'POST /api/public/oubli') {
+    const ident = String(b.identifiant || '').trim().toLowerCase();
+    if (!ident || ident.length > 200) return ko(400, 'invalide');
+    if (trop('oubli|' + ident, 3) || trop('oubli|tous', 60)) return ko(429, 'trop_essais');
+    compter('oubli|' + ident); compter('oubli|tous');
+    const u = comptes().find(x => x.identifiant === ident || (x.email && x.email === ident));
+    if (u && u.email) {
+      const jeton = hasard(32);
+      CacheService.getScriptCache().put('reinit|' + jeton, u.id + '|' + (u.v || 0), 3600);
+      try {
+        MailApp.sendEmail({ to: u.email, name: 'Suivi des stages',
+          subject: 'Suivi des stages - nouveau mot de passe',
+          body: 'Bonjour ' + u.prenom + ',\n\nUne demande de nouveau mot de passe a ete faite pour votre compte « ' + u.identifiant + ' » de l\'application Suivi des stages du lycee Raymond Queneau.\n\n'
+            + 'Pour choisir un nouveau mot de passe, ouvrez ce lien (valable 1 heure, une seule fois) :\n' + urlSite() + '#reinit=' + jeton
+            + '\n\nSi vous n\'avez rien demande, ignorez ce message : votre mot de passe ne change pas.\n\nMessage envoye automatiquement.' });
+      } catch (err) { console.error('Envoi du lien de mot de passe impossible : ' + (err && err.message)); }
+    }
+    return ok({ ok: true });
+  }
+  if (route === 'POST /api/public/reinit') {
+    const jeton = String(b.jeton || ''), mdp = String(b.motdepasse || '');
+    if (!/^[a-f0-9]{32}$/.test(jeton)) return ko(400, 'lien_reinit');
+    if (trop('reinit|essais', 30)) return ko(429, 'trop_essais');
+    const cache = CacheService.getScriptCache(), v = cache.get('reinit|' + jeton);
+    if (!v) { compter('reinit|essais'); return ko(410, 'lien_reinit'); }
+    if (mdp.length < 6 || mdp.length > 200) return ko(400, 'motdepasse_court');
+    const l = comptes(), p = v.split('|'), u = l.find(x => x.id === p[0]);
+    if (!u || String(u.v || 0) !== p[1]) { cache.remove('reinit|' + jeton); return ko(410, 'lien_reinit'); }
+    u.sel = hasard(32); u.hash = hacher(mdp, u.sel); u.v = (u.v || 0) + 1;   // ferme les autres sessions
+    sauverComptes(l); cache.remove('reinit|' + jeton);
+    return ok({ token: creerJeton(u), user: userInfo(u) });
+  }
+
   if (route === 'POST /api/inscription') {
     const role = b.role, prenom = String(b.prenom || '').trim(), ident = String(b.identifiant || '').trim().toLowerCase();
     let nom = String(b.nom || '').trim();
@@ -718,6 +766,26 @@ function router(m, chemin, route, b, jeton) {
   const estProf = user.role === 'prof' || user.role === 'ddfpt';
 
   if (route === 'GET /api/moi') return ok(userInfo(user));
+  // Mon profil : e-mail (tous, facultatif pour un eleve) et telephone (personnel)
+  if (route === 'POST /api/moi/profil') {
+    const email = String(b.email || '').trim().toLowerCase(), tel = String(b.tel || '').trim();
+    if (email && !emailValide(email)) return ko(400, 'email_invalide');
+    if (tel && !/^[\d\s+.()-]{8,20}$/.test(tel)) return ko(400, 'tel_invalide');
+    const l = comptes(), u = l.find(x => x.id === user.id);
+    if (email && l.some(x => x !== u && x.email === email)) return ko(409, 'email_pris');
+    u.email = email; if (estProf) u.tel = tel;
+    sauverComptes(l); return ok(userInfo(u));
+  }
+  // Changer son mot de passe (l'ancien est demande) ; les autres sessions sont fermees, celle-ci continue.
+  if (route === 'POST /api/moi/motdepasse') {
+    const cle = 'mdp|' + user.id;
+    if (trop(cle, 8)) return ko(429, 'trop_essais');
+    const l = comptes(), u = l.find(x => x.id === user.id), nouveau = String(b.nouveau || '');
+    if (hacher(String(b.ancien || ''), u.sel) !== u.hash) { compter(cle); return ko(403, 'ancien_incorrect'); }
+    if (nouveau.length < 6 || nouveau.length > 200) return ko(400, 'motdepasse_court');
+    u.sel = hasard(32); u.hash = hacher(nouveau, u.sel); u.v = (u.v || 0) + 1;
+    sauverComptes(l); return ok({ token: creerJeton(u), user: userInfo(u) });
+  }
 
   if (chemin.indexOf('/api/fichier/') === 0) return routesFichier(route, b, user, estProf);
   if (chemin.indexOf('/api/journal/') === 0) return routesJournal(route, b, user, estProf);

@@ -27,6 +27,7 @@ const ERR = {
   identifiant_invalide: 'Identifiant : 3 à 40 caractères (lettres sans accent, chiffres, point, tiret).',
   motdepasse_court: 'Le mot de passe doit contenir au moins 6 caractères.', code_prof: 'Code professeur incorrect.',
   classe_requise: 'Choisis ta classe.', nom_requis: 'Nom et prénom sont obligatoires.', interdit: 'Action non autorisée.',
+  ancien_incorrect: 'Le mot de passe actuel est incorrect.', tel_invalide: 'Numéro de téléphone invalide.', email_pris: 'Cette adresse e-mail est déjà utilisée par un autre compte.', lien_reinit: 'Ce lien a expiré ou a déjà servi : refais une demande de nouveau mot de passe.',
   code_eleve: 'Code d’inscription élève incorrect : demande-le à ton professeur.', code_ddfpt: 'Code DDFPT incorrect.', code_chef: 'Code « chef d’établissement » incorrect.', convention_deja_signee: 'Cette convention a déjà été signée : elle ne peut plus être recréée. Demande à ton professeur référent de l’annuler si elle doit être corrigée.', convention_introuvable: 'Convention introuvable (elle a peut-être été annulée).', convention_indisponible: 'Les conventions ne sont disponibles qu’avec la version Google de l’application.', pas_lecteur: 'Votre compte ne permet pas d’ouvrir cette convention.', classe_autre_referent: 'Cette classe a d’autres professeurs référents : seuls eux (ou le DDFPT) peuvent la modifier.', nom_initiales: 'Pour le nom, indique seulement les 2 premières lettres.', referent_sans_email: 'Ton professeur référent n’a pas encore indiqué son adresse e-mail dans l’application.', pas_de_referent: 'Aucun professeur référent n’est désigné pour ta classe.', envoi_impossible: 'L’e-mail n’a pas pu être envoyé (service de messagerie indisponible).', envoi_indisponible: 'L’envoi par e-mail n’est pas disponible avec ce serveur.', email_invalide: 'Adresse e-mail invalide.', trop_gros: 'Fichier trop volumineux.', trop_essais: 'Trop de tentatives. Réessaie dans quelques minutes.', pas_un_pdf: 'Ce fichier n’est pas un PDF valide.', lba_non_configure: 'La clé de l’API apprentissage n’est pas configurée (LBA_API_KEY).', lba_cle: 'L’API apprentissage refuse la clé : vérifiez LBA_API_KEY.', lba_recherche: 'La recherche des offres en apprentissage a échoué : réessayez plus tard.', ft_non_configure: 'La connexion à France Travail n’est pas configurée (FT_CLIENT_ID et FT_CLIENT_SECRET dans les propriétés du script).', ft_identifiants: 'France Travail refuse les identifiants : vérifiez FT_CLIENT_ID, FT_CLIENT_SECRET et l’abonnement à l’API Offres d’emploi.', ft_recherche: 'La recherche France Travail a échoué : réessayez plus tard.', ft_indisponible: 'L’import France Travail n’est disponible qu’avec la version Google.', lien_expire: 'Ce lien a expiré ou a été annulé.', deja_signe: 'Ce protocole a déjà été signé.', protosig_indisponible: 'La signature à distance n’est disponible qu’avec la version Google de l’application.', mission_indisponible: 'Les ordres de mission ne sont disponibles qu’avec la version Google de l’application.', fichier_indisponible: 'Le dépôt de documents n’est disponible qu’avec la version Google de l’application.',
   non_connecte: 'Session expirée, reconnecte-toi.', introuvable: 'Élément introuvable.',
 };
@@ -254,8 +255,8 @@ function entete(prof) {
     const nu = urgences().filter(e => !e.d.prof.urgence).length + protocolesAValider().filter(({ e }) => estReferentDe(e)).length;
     const np = (S.propositionsEnt || []).length, ns = missionsASigner().length, no = S.offresProposees.length;
     nav = S.user.role === 'ddfpt'
-      ? [['synthese', '🏫 Vue d’ensemble'], ['tableau', '📊 Élèves'], ['classes', '📅 Classes et dates PFMP'], ['visites', '🗓️ Visites', ns], ['entreprises', '🏢 Entreprises', np], ['offres', '📢 Offres de stage', no], ['carte', '🗺️ Carte'], ['alertes', '🔔 Alertes', nu]]
-      : [['tableau', '📊 Tableau de bord'], ['alertes', '🔔 Alertes', nu], ['visites', '🗓️ Visites', ns], ['carte', '🗺️ Carte'], ['classes', '📅 Classes et dates'], ['entreprises', '🏢 Entreprises', np], ['offres', '📢 Offres de stage', no]];
+      ? [['synthese', '🏫 Vue d’ensemble'], ['tableau', '📊 Élèves'], ['classes', '📅 Classes et dates PFMP'], ['visites', '🗓️ Visites', ns], ['entreprises', '🏢 Entreprises', np], ['offres', '📢 Offres de stage', no], ['carte', '🗺️ Carte'], ['alertes', '🔔 Alertes', nu], ['moncompte', '👤 Mon profil']]
+      : [['tableau', '📊 Tableau de bord'], ['alertes', '🔔 Alertes', nu], ['visites', '🗓️ Visites', ns], ['carte', '🗺️ Carte'], ['classes', '📅 Classes et dates'], ['entreprises', '🏢 Entreprises', np], ['offres', '📢 Offres de stage', no], ['moncompte', '👤 Mon profil']];
   } else {
     const d = S.el, nl = d.prof.conseils.filter(c => !d.etat.conseilsLus.includes(c.id)).length;
     nav = navEleve(d, { accueil: nl, offres: nbOffresEleve(), suivi: relancesDues(d).length, bord: nbBordEnRetard(d) });
@@ -270,8 +271,19 @@ function vueAuth() {
   const t = S.auth, tab = (k, l) => `<button data-a="auth" data-t="${k}" class="${t === k ? 'actif' : ''}">${l}</button>`;
   let corps;
   if (t === 'connexion') corps = `<label>Identifiant<input id="a_id" autocomplete="username"></label><label>Mot de passe<input id="a_pw" type="password" autocomplete="current-password"></label>
-    <button class="btn" data-a="connexion">Se connecter</button>`;
-  else corps = `<div class="deux"><label>Prénom<input id="a_prenom" maxlength="40"></label>
+    <button class="btn" data-a="connexion">Se connecter</button>
+    <p style="margin:12px 0 0"><button type="button" class="lien" data-a="auth" data-t="oubli">Mot de passe oublié ?</button></p>`;
+  else if (t === 'oubli') corps = `<h3 style="margin-top:0">🔑 Mot de passe oublié</h3>
+    <p class="petit">Indique ton identifiant (ou l’adresse e-mail enregistrée dans ton profil) : un lien pour choisir un nouveau mot de passe est envoyé à cette adresse. Il est valable 1 heure.</p>
+    <label>Identifiant ou adresse e-mail<input id="o_id" autocomplete="username"></label>
+    <button class="btn" data-a="oubli">Recevoir le lien</button>
+    <p class="doux petit" style="margin-top:10px">Élève sans adresse e-mail enregistrée : demande à ton professeur de te donner un nouveau mot de passe.</p>
+    <p><button type="button" class="lien" data-a="auth" data-t="connexion">← Revenir à la connexion</button></p>`;
+  else if (t === 'reinit') corps = `<h3 style="margin-top:0">🔑 Choisir un nouveau mot de passe</h3>
+    <label>Nouveau mot de passe <span class="doux petit">(6 caractères minimum)</span><input id="r_pw" type="password" autocomplete="new-password"></label>
+    <label>Confirmer le mot de passe<input id="r_pw2" type="password" autocomplete="new-password"></label>
+    <button class="btn" data-a="reinit">Enregistrer et me connecter</button>`;
+  if (!corps) corps = `<div class="deux"><label>Prénom<input id="a_prenom" maxlength="40"></label>
     ${t === 'eleve' ? `<label>Nom <span class="doux petit">(2 premières lettres seulement)</span><input id="a_nom" maxlength="2" style="text-transform:uppercase" placeholder="ex. MA"></label>` : '<label>Nom<input id="a_nom"></label>'}</div>
     ${t === 'eleve' && S.codeEleveRequis ? `<label>Code d’inscription élève <span class="doux petit">(donné par ton professeur)</span><input id="a_codeEleve" autocomplete="off"></label>` : ''}
     ${t === 'eleve' ? (S.pubClasses.length ? `<label>Classe<select id="a_classe"><option value="">— Choisir —</option>${S.pubClasses.map(c => `<option value="${c.id}">${esc(c.nom)}</option>`).join('')}</select></label>`
@@ -422,7 +434,7 @@ function vueProfil() {
       <label>Prénom<input id="p_prenom" value="${esc(p.prenom)}" maxlength="40"></label>
       <label>Nom <span class="doux petit">(2 premières lettres)</span><input id="p_nom" value="${esc(p.nom)}" maxlength="2" style="text-transform:uppercase"></label>
       <label>Classe<select id="p_classe">${S.classes.map(c => `<option value="${c.id}" ${c.id === p.classeId ? 'selected' : ''}>${esc(c.nom)}</option>`).join('')}</select></label></div>
-    <p class="doux petit">🔒 Pour protéger tes données, l’application ne garde que ton prénom et les 2 premières lettres de ton nom : ni e-mail, ni téléphone, ni adresse.</p></section>
+    <p class="doux petit">🔒 Pour protéger tes données, l’application ne garde que ton prénom et les 2 premières lettres de ton nom : ni téléphone, ni adresse. Ton e-mail seulement si tu choisis de l’indiquer (ci-dessous), pour récupérer ton mot de passe.</p></section>
   <section class="carte"><h2>Mes communes de résidence possibles</h2>
     <p class="doux">Indique 2 ou 3 communes d’où tu peux partir en stage (chez tes parents, un grand-parent, un internat…) et, pour chacune, la distance que tu peux parcourir.
       <b>Seul le nom de la commune est enregistré, jamais ton adresse.</b> Les distances sont calculées depuis le centre de la commune.</p>
@@ -431,7 +443,7 @@ function vueProfil() {
       <div style="font-weight:600;font-size:.88rem">Commune</div>${champGeo('r' + i, r.adresse, r.lat, r.lon, true)}
       <label style="margin-top:12px">Distance de déplacement possible : <b id="r${i}_km">${r.rayon}</b> km
         <input type="range" min="1" max="50" value="${r.rayon}" id="r${i}_rayon" data-i="rayon" data-k="r${i}_km"></label></div>`).join('')}</div>
-    <div class="actions"><button class="btn" data-a="sauverProfil">Enregistrer mon profil</button></div></section>`;
+    <div class="actions"><button class="btn" data-a="sauverProfil">Enregistrer mon profil</button></div></section>${blocsCompte()}`;
 }
 I.rayon = el => { $('#' + el.dataset.k).textContent = el.value; };
 A.sauverProfil = async () => {
@@ -823,3 +835,63 @@ window.addEventListener('beforeinstallprompt', ev => { ev.preventDefault(); invi
 window.addEventListener('appinstalled', () => { invite = null; majInstaller(); toast('Application installée'); });
 A.installer = async () => { if (!invite) return; invite.prompt(); await invite.userChoice; invite = null; majInstaller(); };
 if ('serviceWorker' in navigator && window.isSecureContext) window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {}); });
+
+/* ---------- Mon compte : e-mail, téléphone (personnel), mot de passe ; mot de passe oublié ---------- */
+function blocsCompte() {
+  const u = S.user, perso = u.role !== 'eleve';
+  return `<section class="carte"><h2>✉️ ${perso ? 'Mes coordonnées' : 'Récupérer mon mot de passe'}</h2>
+    ${perso ? '<p class="doux petit">Votre adresse sert à recevoir les protocoles d’accord de vos classes et un lien si vous oubliez votre mot de passe. Votre téléphone n’est visible que par vous. Rien n’est montré aux élèves.</p>'
+      : '<p class="doux petit">Facultatif : si tu indiques une adresse e-mail, tu pourras recevoir un lien pour choisir un nouveau mot de passe si tu l’oublies. Elle ne sert à rien d’autre et n’est visible que par toi. Sans adresse, ton professeur peut te donner un nouveau mot de passe.</p>'}
+    <div class="deux"><label>Adresse e-mail${perso ? '' : ' <span class="doux petit">(facultatif)</span>'}<input id="c_email" type="email" value="${esc(u.email || '')}" autocomplete="email" placeholder="${perso ? 'prenom.nom@ac-normandie.fr' : 'ton.adresse@exemple.fr'}"></label>
+      ${perso ? `<label>Téléphone<input id="c_tel" type="tel" value="${esc(u.tel || '')}" autocomplete="tel" placeholder="06 12 34 56 78"></label>` : ''}</div>
+    <div class="actions"><button class="btn" data-a="sauverCompte">Enregistrer</button></div></section>
+  <section class="carte"><h2>🔐 Changer mon mot de passe</h2>
+    <div class="deux"><label>Mot de passe actuel<input id="c_ancien" type="password" autocomplete="current-password"></label>
+      <label>Nouveau mot de passe <span class="doux petit">(6 caractères minimum)</span><input id="c_nouveau" type="password" autocomplete="new-password"></label>
+      <label>Confirmer le nouveau mot de passe<input id="c_nouveau2" type="password" autocomplete="new-password"></label></div>
+    <div class="actions"><button class="btn" data-a="changerMdp">Changer mon mot de passe</button></div>
+    <p class="doux petit">Tes autres appareils connectés seront déconnectés.</p></section>`;
+}
+function vueMonCompte() {
+  const u = S.user;
+  return `<section class="carte"><h2>👤 Mon profil</h2>
+    <p><b>${esc(nomComplet(u))}</b> · ${u.role === 'ddfpt' ? 'DDFPT' : 'Professeur'}${u.chef ? ' · signe pour le chef d’établissement' : ''}<br><span class="doux">Identifiant de connexion : <b>${esc(u.identifiant)}</b></span></p></section>${blocsCompte()}`;
+}
+A.sauverCompte = async () => {
+  const u = await api('POST', '/api/moi/profil', { email: val('c_email'), tel: $('#c_tel') ? val('c_tel') : '' });
+  Object.assign(S.user, u); render(); toast('Enregistré');
+};
+// Changement du mot de passe : la session continue ; pour un élève, la clé de ses conventions est re-chiffrée avec le nouveau mot de passe.
+A.changerMdp = async () => {
+  const ancien = $('#c_ancien').value, nouveau = $('#c_nouveau').value;
+  if (!ancien) throw new Error('Indique ton mot de passe actuel.');
+  if (nouveau.length < 6) throw new Error(ERR.motdepasse_court);
+  if (nouveau !== $('#c_nouveau2').value) throw new Error('Les deux nouveaux mots de passe ne sont pas identiques.');
+  const r = await api('POST', '/api/moi/motdepasse', { ancien, nouveau });
+  S.token = r.token; localStorage.setItem('stages_token', r.token); Object.assign(S.user, r.user);
+  if (S.user.role === 'eleve') {
+    try {
+      const vieille = await CONV.cleDepuisMotDePasse(ancien, S.user.identifiant), neuve = await CONV.cleDepuisMotDePasse(nouveau, S.user.identifiant);
+      for (const m of (await api('GET', '/api/conventions')) || []) {
+        if (!m.cleEleve) continue;
+        try { await api('POST', '/api/convention/cle', { id: m.id, cleEleve: await CONV.chiffrer(await CONV.dechiffrer(m.cleEleve, vieille), neuve) }); } catch { /* convention illisible : ignorée */ }
+      }
+    } catch { /* conventions indisponibles sur ce serveur */ }
+    await memoriserCle(S.user, nouveau, S.user.identifiant);
+  }
+  render(); toast('Mot de passe changé');
+};
+A.oubli = async () => {
+  const id = val('o_id'); if (!id) throw new Error('Indique ton identifiant ou ton adresse e-mail.');
+  await api('POST', '/api/public/oubli', { identifiant: id });
+  $('#app').querySelector('.carte').insertAdjacentHTML('beforeend', '<div class="alerte ok" style="margin-top:12px">📧 Si ce compte a une adresse e-mail enregistrée, un lien vient d’y être envoyé (pense à regarder dans les indésirables). Il est valable 1 heure.</div>');
+};
+A.reinit = async () => {
+  const mdp = $('#r_pw').value;
+  if (mdp.length < 6) throw new Error(ERR.motdepasse_court);
+  if (mdp !== $('#r_pw2').value) throw new Error('Les deux mots de passe ne sont pas identiques.');
+  const r = await api('POST', '/api/public/reinit', { jeton: S.jetonReinit, motdepasse: mdp });
+  S.jetonReinit = ''; await memoriserCle(r.user, mdp, r.user.identifiant); await ouvrirSession(r); toast('Nouveau mot de passe enregistré');
+};
+// Lien reçu par e-mail : « #reinit=<jeton> » (retiré aussitôt de la barre d'adresse)
+(() => { const m = /^#reinit=([a-f0-9]{32})$/.exec(location.hash); if (m) { S.jetonReinit = m[1]; S.auth = 'reinit'; S.token = ''; localStorage.removeItem('stages_token'); history.replaceState(null, '', location.pathname + location.search); } })();

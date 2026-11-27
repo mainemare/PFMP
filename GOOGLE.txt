@@ -325,3 +325,13 @@ Limites
   - Jours indemnises (onglet Attestation) : calcul automatique (jours declares par l'entreprise, limites aux jours
     completes dans le journal de bord) ou derogation du professeur avec motif, visible par l'eleve.
   Mise en place : mettez a jour Code.gs puis Deployer > Gerer les deploiements > (crayon) > Nouvelle version.
+
+22. MON PROFIL ET MOT DE PASSE OUBLIE
+  - Professeurs et DDFPT : menu « Mon profil » (adresse e-mail, telephone, changement du mot de passe).
+  - Eleves : en bas de « Mon profil », adresse e-mail FACULTATIVE (seulement pour recuperer le mot de passe) et changement
+    du mot de passe. Sans adresse, le professeur donne un nouveau mot de passe comme avant.
+  - « Mot de passe oublie ? » sur la page de connexion : un lien valable 1 heure, utilisable une fois, est envoye a l'adresse
+    enregistree (MailApp, compte qui a deploye le script). La reponse est la meme que le compte existe ou non.
+  - Le lien pointe vers https://mainemare.github.io/PFMP/ ; si le site change d'adresse, ajoutez la propriete du script
+    URL_SITE (ex. https://autre-adresse/PFMP/). Elle n'est jamais prise dans la demande du navigateur (protection anti-hameconnage).
+  Mise en place : mettez a jour Code.gs puis Deployer > Gerer les deploiements > (crayon) > Nouvelle version.
