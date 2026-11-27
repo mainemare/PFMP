@@ -225,9 +225,9 @@ function dosConseils(e) {
       <button class="lien" style="display:inline" data-a="supConseil" data-id="${c.id}">supprimer</button></div>${esc(c.texte)}</div>`).join('') : '<p class="doux">Aucun conseil.</p>'}
     <label>Nouveau conseil<textarea id="k_texte" rows="3" placeholder="Pense à rappeler…, ton accroche est trop longue…"></textarea></label><button class="btn" data-a="conseil">Envoyer le conseil</button>
   </div><div><h3>Entreprises proposées à l’élève</h3>
-    ${d.prof.propositions.length ? d.prof.propositions.map(p => { const en = S.entreprises.find(x => x.id === p.entrepriseId); const pris = d.demandes.liste.some(x => x.entrepriseId === p.entrepriseId);
+    ${d.prof.propositions.length ? d.prof.propositions.map(p => { const en = S.entreprises.find(x => x.id === idEnt(p.entrepriseId)); const pris = d.demandes.liste.some(x => idEnt(x.entrepriseId) === idEnt(p.entrepriseId));
       return `<p>🏢 <b>${esc(en ? en.nom : 'Entreprise supprimée')}</b> <span class="badge clair">${pris ? 'ajoutée à ses appels' : 'pas encore retenue'}</span><br><span class="petit doux">${esc(p.profNom)} · ${fmt(p.date)}${p.message ? ` · « ${esc(p.message)} »` : ''}</span></p>`; }).join('') : '<p class="doux">Aucune proposition.</p>'}
-    <div class="deux"><label>Secteur<select id="k_secteur" data-c="secteurProposer">${optionsSecteur('')}</select></label>
+    <div class="deux"><label>Secteur<select id="k_secteur" data-c="secteurProposer">${optionsSecteur(S.secteurBase)}</select></label>
       <label>Proposer une entreprise de la base <span class="doux petit">(les plus proches de l’élève d’abord)</span><select id="k_ent">${optionsProposer(e)}</select></label></div>
     <details style="margin-bottom:12px"><summary>…ou saisir une nouvelle adresse d’entreprise</summary>
       <label style="margin-top:8px">Nom<input id="kn_nom"></label><div style="font-weight:600;font-size:.88rem">Adresse</div>${champGeo('kn', '', null, null)}
@@ -345,7 +345,8 @@ function vueBase() {
   return `${sectionPropositions()}<section class="carte"><h2>Base d’entreprises (${S.entreprises.length})</h2>
     <p class="doux">Les élèves reçoivent 5 à 10 propositions parmi les entreprises localisées situées dans leur rayon de déplacement.</p>
     <div class="actions"><button class="btn" data-a="editEnt">➕ Ajouter une entreprise</button><button class="btn sec" data-a="importEnt">📥 Importer une liste</button>
-      <button class="btn sec" data-a="choisirFichierEnt">📂 Importer un fichier préparé (.json)</button><input type="file" id="fichierEnt" accept=".json,application/json" hidden data-c="fichierEnt">
+      <button class="btn sec" data-a="choisirFichierEnt">📂 Importer un fichier préparé (.json)</button>
+      ${S.entreprises.length > 1 ? '<button class="btn sec" data-a="doublonsEnt">🔁 Repérer et fusionner les doublons</button>' : ''}<input type="file" id="fichierEnt" accept=".json,application/json" hidden data-c="fichierEnt">
       ${sansGeo ? `<button class="btn sec" data-a="geoManquantes">📍 Localiser les ${sansGeo} adresse(s) non localisée(s)</button>` : ''}
       ${S.entreprises.length ? '' : '<button class="btn sec" data-a="demo">🧪 Charger des données de démonstration</button>'}</div>
     <div class="deux" style="margin-top:12px"><label>Rechercher<input data-i="qEnt" value="${esc(S.qEnt)}" placeholder="Nom, activité, ville…"></label>
@@ -363,16 +364,16 @@ function tableEnt() {
     <td style="white-space:nowrap"><button class="btn mini sec" data-a="editEnt" data-id="${e.id}">Modifier</button> <button class="btn mini danger" data-a="supEnt" data-id="${e.id}">Supprimer</button></td></tr>`).join('')}</table>`;
 }
 I.qEnt = el => { S.qEnt = el.value; $('#tableEnt').innerHTML = tableEnt(); };
-C.secteurBase = el => { S.secteurBase = el.value; $('#tableEnt').innerHTML = tableEnt(); };
+C.secteurBase = el => { choisirSecteur(el.value); $('#tableEnt').innerHTML = tableEnt(); };
 // Dossier élève : la liste « Proposer une entreprise » se filtre par secteur et se trie par distance de l'élève.
 function optionsProposer(e) {
-  const sect = $('#k_secteur') ? $('#k_secteur').value : '';
+  const sect = $('#k_secteur') ? $('#k_secteur').value : S.secteurBase;
   const l = S.entreprises.filter(x => !sect || x.secteur === sect)
     .map(x => ({ x, km: (plusProche(e.d, x) || {}).km }))
     .sort((a, b) => (a.km ?? 1e9) - (b.km ?? 1e9) || a.x.nom.localeCompare(b.x.nom, 'fr')).slice(0, 300);
   return `<option value="">— Choisir (${l.length}${l.length === 300 ? ' plus proches' : ''}) —</option>${l.map(({ x, km }) => `<option value="${x.id}">${esc(x.nom)}${x.secteur && !sect ? ` (${esc(x.secteur)})` : ''}${km != null ? ` — ${km.toFixed(1)} km` : ''}</option>`).join('')}`;
 }
-C.secteurProposer = () => { $('#k_ent').innerHTML = optionsProposer(eleveOuvert()); };
+C.secteurProposer = el => { choisirSecteur(el.value); $('#k_ent').innerHTML = optionsProposer(eleveOuvert()); };
 // Import d'un fichier préparé (liste déjà localisée) : ajoute les entreprises absentes de la base.
 A.choisirFichierEnt = () => $('#fichierEnt').click();
 C.fichierEnt = async el => {
@@ -396,7 +397,7 @@ C.fichierEnt = async el => {
 A.editEnt = el => {
   const prop = el.dataset.prop && (S.propositionsEnt || []).find(p => p.id === el.dataset.prop);
   const e = S.entreprises.find(x => x.id === el.dataset.id) || (prop ? { id: '', nom: prop.nom, secteur: prop.secteur || '', adresse: prop.adresse, lat: null, lon: null, tel: prop.tel, email: '', contact: prop.contact, notes: `Trouvée par ${prop.eleve}` }
-    : { id: '', nom: '', secteur: '', adresse: '', lat: null, lon: null, tel: '', email: '', contact: '', notes: '' });
+    : { id: '', nom: '', secteur: secteurMemo(), adresse: '', lat: null, lon: null, tel: '', email: '', contact: '', notes: '' });
   modal(`<h2>${e.id ? 'Modifier' : 'Ajouter'} une entreprise</h2><div class="deux"><label>Nom<input id="e_nom" value="${esc(e.nom)}"></label><label>Secteur d’activité<input id="e_secteur" value="${esc(e.secteur)}"></label></div>
     <div style="font-weight:600;font-size:.88rem">Adresse</div>${champGeo('e', e.adresse, e.lat, e.lon)}
     <div class="deux" style="margin-top:12px"><label>Téléphone<input id="e_tel" value="${esc(e.tel)}"></label><label>E-mail<input id="e_email" value="${esc(e.email)}"></label><label>Personne à contacter<input id="e_contact" value="${esc(e.contact)}"></label></div>
@@ -407,6 +408,7 @@ A.sauverEnt = async el => {
   const n = { ...ancien, id: el.dataset.id || uid(), nom: val('e_nom'), secteur: val('e_secteur'), ...lireGeo('e'), tel: val('e_tel'), email: val('e_email'), contact: val('e_contact'), notes: val('e_notes') };
   if (ancien.adresse !== n.adresse || ancien.lat !== n.lat) n.precision = n.lat != null ? 'adresse' : '';
   if (!n.nom) throw new Error('Indiquez le nom de l’entreprise.');
+  if (n.secteur) try { localStorage.setItem(cleSecteur(), n.secteur); } catch { /* */ }
   await assurerGeo(n);
   await mutCommun('entreprises', l => { const i = l.findIndex(x => x.id === n.id); if (i >= 0) l[i] = n; else l.push(n); });
   if (el.dataset.prop) await retirerProposition(el.dataset.prop, n);
@@ -499,7 +501,7 @@ function vueCarteProf() {
       <span class="doux">Le chiffre = nombre d’élèves ; la couleur = la demande la plus avancée.</span></div></section>
   ${horsCarte.length ? `<section class="carte"><h3>Demandes hors carte</h3>${horsCarte.map(({ el, x }) => `<p class="petit">• <b>${esc(x.nom)}</b> — ${esc(nomEleve(el))} · ${(STATUTS[x.statut] || STATUTS.a_appeler)[0]} <button class="lien" style="display:inline" data-a="ouvrir" data-id="${el.id}" data-o="suivi">ouvrir le dossier</button></p>`).join('')}</section>` : ''}`;
 }
-C.filtreCarte = el => { S.fc[el.dataset.k] = el.type === 'checkbox' ? el.checked : el.value; render(); };
+C.filtreCarte = el => { if (el.dataset.k === 'secteur') choisirSecteur(el.value); else S.fc[el.dataset.k] = el.type === 'checkbox' ? el.checked : el.value; render(); };
 
 let carteProf = null;
 function fermerCarteProf() { if (carteProf) { carteProf.remove(); carteProf = null; } }
@@ -614,3 +616,70 @@ function vueSynthese() {
       <div class="actions"><button class="btn" data-a="aller" data-v="classes">📅 Gérer les classes et les dates de PFMP</button><button class="btn sec" data-a="aller" data-v="entreprises">🏢 Gérer la base d’entreprises</button></div></section>`;
 }
 A.voirClasse = el => { S.f.classe = el.dataset.id; S.f.niveau = ''; S.f.q = ''; S.f.urg = false; S.vue = 'tableau'; render(); window.scrollTo(0, 0); };
+
+/* ---------- Doublons dans la base d'entreprises : repérage et fusion ----------
+ * Fiches proches (même nom simplifié, nom inclus dans l'autre, mots communs, même téléphone) regroupées.
+ * Fusion : la fiche gardée est complétée avec les informations des autres, les appels des élèves, les propositions
+ * des professeurs et les offres sont reliés à elle, puis les autres fiches sont supprimées. Les anciens identifiants
+ * sont gardés (« fusions ») pour relier aussi les élèves des autres classes à leur prochaine connexion. */
+const paireEnt = (a, b) => [a, b].sort().join('|');
+const usagesEnt = id => S.eleves.filter(e => e.d.demandes.liste.some(x => idEnt(x.entrepriseId) === id)).length;
+function groupesDoublons() {
+  const ignore = new Set(S.nonDoublonsEnt || []), parent = {};
+  const racine = x => { while (parent[x] && parent[x] !== x) x = parent[x]; return x; };
+  for (const e of S.entreprises) for (const s of entreprisesSimilaires(e, 10)) {
+    if (s.id === e.id || ignore.has(paireEnt(e.id, s.id))) continue;
+    const a = racine(e.id), b = racine(s.id); if (a !== b) parent[b] = a;
+  }
+  const g = {};
+  for (const e of S.entreprises) { const r = racine(e.id); (g[r] = g[r] || []).push(e); }
+  // Fiche proposée par défaut : localisée, la plus utilisée, la plus complète
+  const poids = e => (e.lat != null ? 100 : 0) + usagesEnt(e.id) * 10 + ['secteur', 'adresse', 'tel', 'email', 'contact', 'activite', 'siteWeb'].filter(k => e[k]).length + (e.protocole ? 5 : 0);
+  return Object.values(g).filter(l => l.length > 1).map(l => l.sort((a, b) => poids(b) - poids(a)));
+}
+A.doublonsEnt = () => {
+  const g = S.groupesDbl = groupesDoublons();
+  modal(`<h2>🔁 Doublons dans la base d’entreprises</h2>${g.length ? `<p class="doux">${g.length} groupe(s) de fiches qui se ressemblent. Pour chacun, choisissez la fiche à garder : elle est complétée avec les informations des autres (téléphone, e-mail, contact, protocole…), les appels des élèves et les offres sont reliés à elle, puis les autres fiches sont supprimées.</p>`
+    + g.map((l, i) => `<div class="groupe-doublon">${l.map((e, j) => `<label class="doublon-ligne"><input type="radio" name="garder_${i}" value="${e.id}" ${j === 0 ? 'checked' : ''}>
+        <div><b>${esc(e.nom)}</b>${e.secteur ? ` <span class="badge clair">${esc(e.secteur)}</span>` : ''}${e.lat == null ? ' <span class="badge" style="background:#b45309">non localisée</span>' : ''}
+          <br><span class="petit doux">${esc([e.adresse, e.tel, e.email, e.contact].filter(Boolean).join(' · ') || '—')}</span>
+          <br><span class="petit">${usagesEnt(e.id)} élève(s) de vos classes l’ont dans leurs appels</span></div></label>`).join('')}
+      <div class="actions"><button class="btn mini" data-a="fusionnerEnt" data-g="${i}">🔁 Fusionner ces ${l.length} fiches</button><button class="btn mini sec" data-a="pasDoublonEnt" data-g="${i}">Ce ne sont pas des doublons</button></div></div>`).join('')
+    : '<p>✅ Aucun doublon repéré dans la base.</p>'}`, true);
+};
+A.fusionnerEnt = async el => {
+  const l = (S.groupesDbl || [])[+el.dataset.g]; if (!l) return;
+  const garde = el.closest('.groupe-doublon').querySelector('input:checked').value, autres = l.filter(e => e.id !== garde).map(e => e.id);
+  if (!confirm(`Fusionner ${l.length} fiches en une seule ? Les ${autres.length} autre(s) fiche(s) seront supprimées de la base.`)) return;
+  const doc = Object.assign({ entreprises: [] }, (await getDoc('commun/entreprises')) || {}), k = doc.entreprises.find(e => e.id === garde);
+  if (!k) throw new Error('La fiche à garder n’existe plus : rechargez la page.');
+  for (const id of autres) {
+    const o = doc.entreprises.find(e => e.id === id); if (!o) continue;
+    for (const [c, v] of Object.entries(o)) if (!['id', 'nom', 'notes', 'protocole', 'lat', 'lon', 'precision'].includes(c) && (k[c] == null || k[c] === '') && v != null && v !== '') k[c] = v;
+    if (k.lat == null && o.lat != null) Object.assign(k, { lat: o.lat, lon: o.lon, precision: o.precision || '' });
+    if (o.notes && !String(k.notes || '').includes(o.notes)) k.notes = [k.notes, o.notes].filter(Boolean).join(' · ');
+    if (o.protocole) k.protocole = Object.assign({}, o.protocole, k.protocole || {});
+  }
+  doc.entreprises = doc.entreprises.filter(e => !autres.includes(e.id));
+  doc.fusions = doc.fusions || {}; for (const id of autres) doc.fusions[id] = garde;
+  await putDoc('commun/entreprises', doc); S.entreprises = doc.entreprises; S.fusionsEnt = doc.fusions;
+  // Élèves de vos classes : appels et propositions reliés tout de suite (les autres le seront à leur connexion)
+  let n = 0;
+  for (const e of S.eleves) {
+    if (e.d.demandes.liste.some(x => autres.includes(x.entrepriseId))) {
+      const kd = `eleve/${e.id}/demandes`, frais = Object.assign(DEF.demandes(), (await getDoc(kd)) || {});
+      for (const x of frais.liste) if (autres.includes(x.entrepriseId)) x.entrepriseId = garde;
+      await putDoc(kd, frais); e.d.demandes = frais; n++;
+    }
+    if ((e.d.prof.propositions || []).some(p => autres.includes(p.entrepriseId))) await mutProf(e.id, p => p.propositions.forEach(x => { if (autres.includes(x.entrepriseId)) x.entrepriseId = garde; }));
+  }
+  if (S.offres.some(o => autres.includes(o.entrepriseId))) await mutCommun('offres', lo => lo.forEach(o => { if (autres.includes(o.entrepriseId)) o.entrepriseId = garde; }));
+  render(); A.doublonsEnt(); toast(`Fiches fusionnées${n ? ` · appels de ${n} élève(s) reliés` : ''}`);
+};
+A.pasDoublonEnt = async el => {
+  const l = (S.groupesDbl || [])[+el.dataset.g]; if (!l) return;
+  const doc = Object.assign({ entreprises: [] }, (await getDoc('commun/entreprises')) || {}), s = new Set(doc.nonDoublons || []);
+  for (const a of l) for (const b of l) if (a.id < b.id) s.add(paireEnt(a.id, b.id));
+  doc.nonDoublons = [...s]; await putDoc('commun/entreprises', doc); S.nonDoublonsEnt = doc.nonDoublons; S.entreprises = doc.entreprises;
+  A.doublonsEnt(); toast('Noté : ces fiches ne seront plus proposées comme doublons');
+};

@@ -454,3 +454,6 @@ fieldset.c_refs label { display: inline-flex; align-items: center; gap: 6px; mar
 .doublon-prof { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
 .doublon-prof input { min-width: 220px; margin: 0; padding: 5px 8px; font-size: .85rem; }
 .doublon-alerte .actions { margin-top: 6px; }
+.groupe-doublon { border: 1px solid #e5e7eb; border-radius: 12px; padding: 10px; margin: 10px 0; display: grid; gap: 6px; }
+.groupe-doublon .doublon-ligne { justify-content: flex-start; cursor: pointer; font-weight: 400; margin: 0; }
+.groupe-doublon .doublon-ligne input { flex: none; width: auto; margin: 4px 6px 0 0; align-self: flex-start; }

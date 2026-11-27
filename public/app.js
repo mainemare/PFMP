@@ -308,7 +308,20 @@ async function chargerPublic() {
 async function chargerCommun() {
   const [cl, en, pr, of] = await Promise.all([getDoc('commun/classes'), getDoc('commun/entreprises'), api('GET', '/api/profs'), getDoc('commun/offres').catch(() => null)]);
   S.classes = (cl && cl.classes) || []; S.entreprises = (en && en.entreprises) || []; S.profs = pr || []; S.offres = (of && of.offres) || [];
+  S.fusionsEnt = (en && en.fusions) || {}; S.nonDoublonsEnt = (en && en.nonDoublons) || [];
+  // Reprend le dernier secteur choisi s'il existe encore dans la base
+  const sm = secteurMemo(); choisirSecteur(sm && S.entreprises.some(e => e.secteur === sm) ? sm : '');
 }
+// Secteur d'activité : le dernier choisi est gardé (sur cet appareil, pour chaque utilisateur) et repris partout.
+const cleSecteur = () => 'stages_secteur_' + (S.user ? S.user.id : '');
+function secteurMemo() { try { return localStorage.getItem(cleSecteur()) || ''; } catch { return ''; } }
+function choisirSecteur(v) {
+  try { if (v) localStorage.setItem(cleSecteur(), v); else localStorage.removeItem(cleSecteur()); } catch { /* stockage indisponible */ }
+  S.secteur = S.secteurBase = v; S.fc.secteur = v;
+  if (S.fo) S.fo.secteur = !v || S.offres.some(o => o.secteur === v) ? v : '';
+}
+// Fiches fusionnées : l'ancien identifiant renvoie vers la fiche gardée.
+function idEnt(id) { let n = 0; while (id && S.fusionsEnt && S.fusionsEnt[id] && n++ < 20) id = S.fusionsEnt[id]; return id; }
 async function charger() {
   await chargerCommun();
   if (S.user.role !== 'eleve') { await chargerEleves(); S.vue = S.vue || (S.user.role === 'ddfpt' ? 'synthese' : 'tableau'); return; }
@@ -316,6 +329,11 @@ async function charger() {
   // Une section inconnue d'un ancien script Google ne doit pas empêcher la connexion.
   await Promise.all(Object.keys(DEF).map(async k => { docs[k] = await getDoc(`eleve/${S.user.id}/${k}`).catch(() => null); }));
   S.el = normaliser(docs);
+  // Entreprises fusionnées par un professeur : les appels de l'élève sont reliés à la fiche gardée.
+  if (S.el.demandes.liste.some(x => x.entrepriseId && idEnt(x.entrepriseId) !== x.entrepriseId)) {
+    for (const x of S.el.demandes.liste) if (x.entrepriseId) x.entrepriseId = idEnt(x.entrepriseId);
+    await sauver('demandes').catch(() => {});
+  }
   await Promise.all([chargerEtab(), chargerConventions()]);
   S.vue = S.vue || (S.el.profil.residences.some(r => r.lat != null) ? 'accueil' : 'profil');
 }
@@ -470,7 +488,7 @@ function vueEntreprises() {
   const tout = suggestions(d), nb = d.profil.nbSuggestions || 8;
   if (S.offset >= tout.length) S.offset = 0;
   const page = tout.slice(S.offset, S.offset + nb), pris = new Set(demandesP(d, periodeCible(d)).map(x => x.entrepriseId));
-  const props = d.prof.propositions.filter(p => !pris.has(p.entrepriseId)).map(p => ({ p, e: S.entreprises.find(e => e.id === p.entrepriseId) })).filter(x => x.e);
+  const props = d.prof.propositions.filter(p => !pris.has(idEnt(p.entrepriseId))).map(p => ({ p, e: S.entreprises.find(e => e.id === idEnt(p.entrepriseId)) })).filter(x => x.e);
   const secteurs = [...new Set(S.entreprises.map(e => e.secteur).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'fr'));
   // Points affichés sur la carte : mêmes numéros que dans la liste ; « P1, P2… » pour les propositions des professeurs.
   S.pointsCarte = [...props.map((x, i) => ({ e: x.e, num: 'P' + (i + 1), type: 'prof' })), ...page.map((x, i) => ({ e: x.e, num: String(i + 1), type: 'sugg' })),
@@ -491,7 +509,7 @@ function vueEntreprises() {
       <button class="btn sec" data-a="ajoutManuel">➕ J’ai trouvé une entreprise moi-même</button></div></section>`;
 }
 C.nbSugg = async el => { S.el.profil.nbSuggestions = +el.value; S.offset = 0; await sauver('profil'); render(); };
-C.secteur = el => { S.secteur = el.value; S.offset = 0; render(); };
+C.secteur = el => { choisirSecteur(el.value); S.offset = 0; render(); };
 
 /* --- Carte (Leaflet + OpenStreetMap : gratuit, sans clé ; chargée seulement sur cette page) --- */
 const LEAFLET = { js: 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js', css: 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
@@ -580,7 +598,7 @@ function entreprisesSimilaires(p, max = 5) {
     if (tel.length === 9 && chiffresTel(e.tel) === tel) score += 6;
     if (score && ville && motsEnt(e.adresse).join(' ').includes(ville)) score += 1;
     return { e, score };
-  }).filter(x => x.score >= 4).sort((x, y) => y.score - x.score).slice(0, max).map(x => x.e);
+  }).filter(x => x.score >= 5).sort((x, y) => y.score - x.score).slice(0, max).map(x => x.e);
 }
 A.ajoutManuel = () => modal(`<h2>Ajouter une entreprise trouvée par moi-même</h2><label>Nom de l’entreprise<input id="m_nom"></label><label>Adresse<input id="m_adresse"></label>
   <div class="deux"><label>Téléphone<input id="m_tel"></label><label>Personne à contacter<input id="m_contact"></label></div>

@@ -54,7 +54,7 @@ A.ofCopier = async () => {
 A.ofEditer = el => {
   const prop = el.dataset.prop && S.offresProposees.find(x => x.id === el.dataset.prop);
   const o = (el.dataset.id && S.offres.find(x => x.id === el.dataset.id)) || prop
-    || { id: '', entreprise: '', adresse: '', lat: null, lon: null, secteur: '', intitule: '', description: '', niveaux: [], debut: '', fin: '', places: 1, contact: '', tel: '', email: '' };
+    || { id: '', entreprise: '', adresse: '', lat: null, lon: null, secteur: secteurMemo(), intitule: '', description: '', niveaux: [], debut: '', fin: '', places: 1, contact: '', tel: '', email: '' };
   const dansBase = o.entrepriseId || S.entreprises.some(e => normaliserNom(e.nom) === normaliserNom(o.entreprise));
   modal(`<h2>${prop ? '✅ Vérifier et publier l’offre' : o.id ? 'Modifier l’offre' : '➕ Nouvelle offre de stage'}</h2>
     <label>Entreprise<input id="of_ent" value="${esc(o.entreprise)}" list="of_ents"></label>
@@ -137,7 +137,7 @@ function vueOffresEleve() {
     : `<section class="carte"><p>Aucune offre ${niv ? `de niveau ${esc(niv)} ` : ''}pour le moment${S.fo.zones ? ' près de tes communes' : ''}. ${S.fo.zones ? 'Décoche « Seulement près de mes communes » ou ' : ''}regarde aussi les entreprises proposées dans « Entreprises ».</p></section>`}`;
 }
 C.foNiveau = el => { S.fo.niveau = el.value; render(); };
-C.foSecteur = el => { S.fo.secteur = el.value; render(); };
+C.foSecteur = el => { choisirSecteur(el.value); S.fo.secteur = el.value; render(); };
 C.foZones = el => { S.fo.zones = el.checked; render(); };
 A.foAjouter = async el => {
   const o = S.offres.find(x => x.id === el.dataset.id); if (!o) return;
