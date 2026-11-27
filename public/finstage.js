@@ -181,7 +181,7 @@ function blocAttestation(d, k) {
       <div class="actions"><button class="btn sec" data-a="voirFichier" data-t="attestation" data-p="${esc(k)}">👁️ Voir l’attestation signée</button></div>` : ''}
     <h3>Pré-remplie par l’application</h3>
     <div class="table-scroll"><table class="att-resume">${ligne('Entreprise', at.entreprise)}${ligne('Adresse', at.adresse)}${ligne('N° SIRET', at.siret)}${ligne('Représentée par', [at.representant, at.fonction].filter(Boolean).join(', '))}
-      ${ligne('Période', at.debut ? `n° ${at.numero || '…'} du ${dateAtt(at.debut)} au ${dateAtt(at.fin)}` : '')}${ligne('Durée effective', at.jours ? `${at.jours} jours` : '')}</table></div>
+      ${ligne('Période', at.debut ? `n° ${at.numero || '…'} du ${dateAtt(at.debut)} au ${dateAtt(at.fin)}` : '')}${ligne('Durée effective', at.jours ? `${at.jours} jours` : '')}${(() => { const c = controleJours(d, k); return c && c.indemnises != null && (a.fichierLe || c.derog) ? ligne('Jours indemnisés', `${c.indemnises} jour(s)${c.derog ? ' (fixé par ton professeur)' : ' (jours complétés dans ton journal de bord)'}`) : ''; })()}</table></div>
     <p class="doux petit">Ton professeur peut corriger ces informations ; l’entreprise les vérifie et les complète avant de signer.</p>
     <div class="deux"><label>Ton nom de famille <span class="doux petit">(gardé sur cet appareil)</span><input id="att_nom" value="${esc(id.nom)}" autocomplete="family-name"></label>
       <label>Ta date de naissance <span class="doux petit">(gardée sur cet appareil)</span><input id="att_naissance" type="date" value="${esc(id.naissance)}"></label></div>
@@ -335,11 +335,18 @@ function controleJours(d, k) {
     const travaille = avecJours ? !!js[JOURS_SEM[x.getDay()]] : x.getDay() >= 1 && x.getDay() <= 5;
     if (travaille && !['complet', 'absent'].includes(etatJour(d, isoJour(x)))) { aCompleter = isoJour(x); break; }
   }
+  // Dérogation du professeur (dans la partie « prof » du dossier : l'élève ne peut pas la modifier)
+  const derog = ((d.prof && d.prof.indemnisation) || {})[k] || null, manque = !isNaN(declares) && complets < declares ? declares - complets : 0;
+  const auto = isNaN(declares) ? null : Math.min(complets, declares);
   return { label: p.label || 'Stage', complets, declares: isNaN(declares) ? null : declares, parEntreprise: !!a.fichierLe && !!a.signature,
-    signe: !!a.fichierLe, fini: fin < today(), manque: !isNaN(declares) && complets < declares ? declares - complets : 0, aCompleter };
+    signe: !!a.fichierLe, fini: fin < today(), manque, aCompleter, derog, auto, indemnises: derog ? derog.n : auto };
 }
 function alerteJoursPeriode(d, k, titre) {
   const c = controleJours(d, k);
+  if (c && c.derog) {
+    if (c.declares != null && c.derog.n >= c.declares) return '';
+    return `<div class="alerte ${c.derog.n < (c.declares || 0) ? 'attention' : 'info'}" role="status">📓 <b>${titre ? esc(c.label) + ' : ' : ''}ton professeur a retenu ${c.derog.n} jour(s) indemnisé(s)</b>${c.declares != null ? ` sur ${c.declares} jour(s) déclaré(s) par l’entreprise` : ''}.${c.derog.motif ? ` Motif : « ${esc(c.derog.motif)} ».` : ''}</div>`;
+  }
   if (!c || !c.manque || !(c.signe || c.fini)) return '';
   const qui = c.parEntreprise ? `L’entreprise a déclaré <b>${c.declares} jour(s)</b> effectué(s)` : `L’attestation compte <b>${c.declares} jour(s)</b> de stage`;
   return `<div class="alerte alerte2" role="alert">📓 <b>${titre ? esc(c.label) + ' : ' : ''}ton journal de bord ne contient que ${c.complets} jour(s) complété(s).</b>
@@ -351,5 +358,23 @@ A.bordAllerJour = el => { S.bordJour = el.dataset.j; S.vue = 'bord'; render(); w
 // Professeur : rappel du croisement dans l'onglet « Attestation »
 function ligneJoursProf(d, k) {
   const c = controleJours(d, k); if (!c || c.declares == null) return '';
-  return `<p class="petit" style="color:${c.manque && (c.signe || c.fini) ? '#b45309' : 'inherit'}">📓 Journal de bord : <b>${c.complets}</b> jour(s) complété(s) pour <b>${c.declares}</b> jour(s) ${c.parEntreprise ? 'déclarés par l’entreprise' : 'prévus'}${c.manque && (c.signe || c.fini) ? ` · ⚠️ ${c.manque} jour(s) sans activité déclarée, non indemnisables` : c.manque ? '' : ' ✅'}</p>`;
+  return `<div class="indemn"><b>💶 Jours indemnisés : ${c.indemnises}</b> ${c.derog ? `<span class="badge" style="background:#7c3aed">dérogation</span> <span class="petit doux">fixée par ${esc(c.derog.par)} le ${fmtDT(c.derog.date)}${c.derog.motif ? ` · « ${esc(c.derog.motif)} »` : ''} · calcul automatique : ${c.auto}</span>` : '<span class="petit doux">(calcul automatique : jours déclarés, limités aux jours complétés dans le journal de bord)</span>'}
+    <div class="indemn-form"><label class="petit">Déroger : jours indemnisés retenus<input type="number" min="0" max="366" class="ind_n" value="${c.derog ? c.derog.n : ''}" placeholder="${c.auto}"></label>
+      <label class="petit">Motif<input class="ind_motif" value="${esc(c.derog ? c.derog.motif || '' : '')}" placeholder="ex. journal rempli sur papier, panne de téléphone…"></label>
+      <button class="btn mini" data-a="indemnFixer" data-p="${esc(k)}">Enregistrer la dérogation</button>${c.derog ? `<button class="btn mini sec" data-a="indemnAuto" data-p="${esc(k)}">Revenir au calcul automatique</button>` : ''}</div></div>
+  <p class="petit" style="color:${c.manque && (c.signe || c.fini) && !c.derog ? '#b45309' : 'inherit'}">📓 Journal de bord : <b>${c.complets}</b> jour(s) complété(s) pour <b>${c.declares}</b> jour(s) ${c.parEntreprise ? 'déclarés par l’entreprise' : 'prévus'}${c.manque && (c.signe || c.fini) && !c.derog ? ` · ⚠️ ${c.manque} jour(s) sans activité déclarée, non indemnisables` : c.derog && c.manque ? ' · dérogation appliquée' : c.manque ? '' : ' ✅'}</p>`;
 }
+
+// Professeur : dérogation au nombre de jours indemnisés (gardée dans la partie « prof », non modifiable par l'élève)
+A.indemnFixer = async el => {
+  const e = eleveOuvert(), k = el.dataset.p, z = zoneAtt(k), n = z.querySelector('.ind_n').value.trim(), motif = z.querySelector('.ind_motif').value.trim();
+  if (!/^\d{1,3}$/.test(n)) throw new Error('Indiquez un nombre de jours indemnisés.');
+  if (!motif) throw new Error('Indiquez le motif de la dérogation : il est montré à l’élève.');
+  await mutProf(e.id, p => { p.indemnisation = p.indemnisation || {}; p.indemnisation[k] = { n: +n, motif, par: nomComplet(S.user), parId: S.user.id, date: maintenant() }; });
+  render(); toast('Dérogation enregistrée');
+};
+A.indemnAuto = async el => {
+  const e = eleveOuvert(), k = el.dataset.p;
+  await mutProf(e.id, p => { if (p.indemnisation) delete p.indemnisation[k]; });
+  render(); toast('Calcul automatique rétabli');
+};
